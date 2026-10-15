@@ -211,8 +211,8 @@ angle, not from the 7 pre-rotated sets.
 
 `road_draw_sky` / `road_draw_sky_mulholland` (`race_road.c:441`, `:488`) at native size scaled; the scroll follows
 the interpolated heading without the original's rounding to 8 pixels (`sky_scroll`, `race_road.c:428`). SRE found
-the sky racing across the screen when steering and slowed it to 1/8; try the faithful rate first and add
-`SKY_SCROLL` only if the playtest says so. Horizon y from `road_proj_y(0xF0, …)` in float.
+the sky racing across the screen when steering and slowed it to 1/8; use `SKY_SCROLL` = 1/8 of the original rate from the start
+(user decision 2026-10-15). Horizon y from `road_proj_y(0xF0, …)` in float.
 
 ### 3.6 Sprites
 
@@ -339,7 +339,7 @@ the original's picture from 14 segments in.
   interpolated angle may differ by a pixel at the walls. The compare tool tolerates ±1 px.
 * **Irregular frame times** (deadline pacing, AdLib-chained tick): interpolation uses measured snapshot times.
 
-## 8. Decisions (proposed; user may change in U3)
+## 8. Decisions (confirmed by the user 2026-10-15; sky scroll 1/8)
 
 1. Defaults 1280 × 800 with 2 × 2 AA; stage 2: draw distance 60, haze 30.
 2. All five race kinds enhanced (`--enh-modes` all), the Aqueduct last.
