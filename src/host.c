@@ -24,6 +24,7 @@ static void (*focus_lost_handler)(void);
 static bool (*frame_source)(u32 *);
 static u32 frame[HOST_FRAME_MAX_W * HOST_FRAME_MAX_H];
 static int frame_w = 320, frame_h = 200;
+static int view_w = 320, view_h = 200;  /* ENH: logical screen size (presentation, mouse); frame_w/h are pixels */
 #define VIEW_W(w) (w)                   /* logical presentation: frame width x 3/4 of it (4:3) */
 #define VIEW_H(w) ((w) * 3 / 4)
 
@@ -100,11 +101,18 @@ void host_set_focus_lost_handler(void (*handler)(void)) { focus_lost_handler = h
 
 void host_set_frame_source(bool (*compose)(u32 *), int w, int h)
 {
+    host_set_frame_source_logical(compose, w, h, w, h);         /* ENH: pixel size = logical size */
+}
+
+void host_set_frame_source_logical(bool (*compose)(u32 *), int w, int h, int lw, int lh)   /* ENH: */
+{
     frame_source = compose;
     frame_w = SDL_clamp(w, 1, HOST_FRAME_MAX_W);
     frame_h = SDL_clamp(h, 1, HOST_FRAME_MAX_H);
+    view_w = SDL_max(lw, 1);                                    /* ENH: */
+    view_h = SDL_max(lh, 1);                                    /* ENH: */
     /* The 200-line picture fills a 4:3 area, as it did on a VGA monitor. */
-    SDL_SetRenderLogicalPresentation(renderer, VIEW_W(frame_w), VIEW_H(frame_w), SDL_LOGICAL_PRESENTATION_LETTERBOX);
+    SDL_SetRenderLogicalPresentation(renderer, VIEW_W(view_w), VIEW_H(view_w), SDL_LOGICAL_PRESENTATION_LETTERBOX);   /* ENH: view_w */
     if (texture) SDL_DestroyTexture(texture);
     texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, frame_w, frame_h);
     SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
@@ -400,7 +408,7 @@ static void present(void)
     SDL_UpdateTexture(texture, NULL, frame, frame_w * 4);
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
-    SDL_FRect dst = { 0, 0, (float)VIEW_W(frame_w), (float)VIEW_H(frame_w) };
+    SDL_FRect dst = { 0, 0, (float)VIEW_W(view_w), (float)VIEW_H(view_w) };     /* ENH: view_w */
     SDL_RenderTexture(renderer, texture, NULL, &dst);
     SDL_RenderPresent(renderer);
 }
@@ -707,8 +715,8 @@ static void process_events(void)
                 float vw = (float)ww, vh = (float)wh;
                 if (vw * 3 > vh * 4) vw = vh * 4 / 3; else vh = vw * 3 / 4;
                 if (vw >= 1 && vh >= 1) {
-                    mickey_x += ev.motion.xrel * 2.0f * (float)frame_w / vw;
-                    mickey_y += ev.motion.yrel * 2.0f * (float)frame_h / vh;
+                    mickey_x += ev.motion.xrel * 2.0f * (float)view_w / vw;    /* ENH: view_w */
+                    mickey_y += ev.motion.yrel * 2.0f * (float)view_h / vh;    /* ENH: view_h */
                 }
             }
             SDL_ConvertEventToRenderCoordinates(renderer, &ev);
@@ -736,10 +744,10 @@ void host_mouse_read(s16 *x, s16 *y, u8 *buttons)
 {
     process_events();
     /* Logical presentation is 320 x 240 (4:3); the game's screen is 320 x 200. */
-    float px = SDL_clamp(mouse_x, 0.0f, (float)VIEW_W(frame_w) - 1);
-    float py = SDL_clamp(mouse_y, 0.0f, (float)VIEW_H(frame_w) - 1);
-    if (x) *x = (s16)(px * frame_w / VIEW_W(frame_w));
-    if (y) *y = (s16)(py * frame_h / VIEW_H(frame_w));
+    float px = SDL_clamp(mouse_x, 0.0f, (float)VIEW_W(view_w) - 1);              /* ENH: view_w/h for frame_w/h */
+    float py = SDL_clamp(mouse_y, 0.0f, (float)VIEW_H(view_w) - 1);
+    if (x) *x = (s16)(px * view_w / VIEW_W(view_w));
+    if (y) *y = (s16)(py * view_h / VIEW_H(view_w));
     SDL_MouseButtonFlags b = SDL_GetMouseState(NULL, NULL);
     if (buttons) *buttons = (u8)(((b & SDL_BUTTON_LMASK) ? 1 : 0) | ((b & SDL_BUTTON_RMASK) ? 2 : 0) | script_buttons);
 }

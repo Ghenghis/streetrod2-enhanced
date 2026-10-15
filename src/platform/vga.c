@@ -5,6 +5,7 @@
 
 #include "host.h"
 #include "platform/ega.h"
+#include "enhanced/enhanced.h"   /* ENH: */
 
 VgaRegs vga;
 
@@ -134,6 +135,7 @@ u8 vga_rd(u16 off)
 
 void vga_wr(u16 off, u8 v)
 {
+    u32 enh_before = enh.track ? enh_vram_peek(off) : 0;               /* ENH: written mask */
     for (int k = 0; k < 4; k++) {
         if (!(vga.map_mask >> k & 1)) continue;
         u8 *p = &ega_plane(k)[off];
@@ -163,6 +165,7 @@ void vga_wr(u16 off, u8 v)
         if ((vga.mode & 3) == 3) m &= v;
         *p = (u8)((x & m) | (l & (u8)~m));
     }
+    if (enh.track) enh_vram_write(off, enh_before);                    /* ENH: */
     ega_touch();
 }
 

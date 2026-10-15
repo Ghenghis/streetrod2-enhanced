@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "host.h"
+#include "enhanced/enhanced.h"   /* ENH: */
 
 static u8 planes[4][EGA_PLANE_SIZE];
 static u16 start_addr;
@@ -41,10 +42,15 @@ static bool compose(u32 *xrgb)
     return true;
 }
 
+static bool compose_enh(u32 *xrgb) { return enh_compose(compose, xrgb); }     /* ENH: scaled output frame */
+
 void ega_show(void)
 {
     dirty = true;
-    host_set_frame_source(compose, 320, 200);
+    if (enh_hires())                                                                /* ENH: */
+        host_set_frame_source_logical(compose_enh, 320 * enh.res_scale, 200 * enh.res_scale, 320, 200);
+    else
+        host_set_frame_source(compose, 320, 200);
 }
 
 void ega_init(void)

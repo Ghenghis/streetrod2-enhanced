@@ -13,6 +13,7 @@
 #include "game/garage_screens.h"
 #include "game/ui.h"
 #include "host.h"
+#include "enhanced/enhanced.h"   /* ENH: */
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -338,6 +339,7 @@ s16 race_run(void)
         if (MODE == 8) race_load_graphics_rot();
         else road_load_graphics();
         shp_load_set();
+        enh_race_begin(MODE);                                           /* ENH: */
         shown_rpm = PHS(p, PH_RPM);
         shown_speed = PHS(p, PH_SPEED);
         s16 rpm0 = shown_rpm, sp0 = shown_speed;
@@ -394,6 +396,7 @@ s16 race_run(void)
         }
     }
     if (getenv("SR_TRACE")) fprintf(stderr, "trace: %ldms race_run end %d seg %d opp %d\n", (long)clock(), res, DSS(DS_seg), DSS(DS_opp_seg));   /* PORT: developer aid */
+    enh_race_end();                                                     /* ENH: */
     arena_reset();
     DSW(DS_arena2_used) = 0;
     FarPtr shown = DSS(DS_back_page) == 1 ? ds_far(DS_page2_ptr) : ds_far(DS_page1_ptr);

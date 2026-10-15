@@ -13,6 +13,7 @@
 #include "game/race.h"
 
 #include "host.h"
+#include "enhanced/enhanced.h"   /* ENH: */
 #include "platform/platform.h"
 #include "platform/video.h"
 
@@ -255,6 +256,7 @@ void road_page_flip(void)
         DSS(DS_back_page) = DSS(DS_shown_page);
         DSS(DS_shown_page) = t;
         DSW(DS_draw_seg) = DSS(DS_back_page) == 1 ? 0xA200 : 0xA400;
+        enh_frame_presented(DSS(DS_shown_page));                        /* ENH: */
         ega_show_page(DSS(DS_shown_page));
     } else {                                                /* other drivers (parked) */
         Rect r;
@@ -1433,6 +1435,7 @@ static void road_draw_mirror(void)
 /* 0dcb:11fc road_frame */
 void road_frame(void)
 {
+    enh_frame_begin();                                                  /* ENH: background layer */
     if (MODE == 8) aq_project_front();
     else { road_set_seg_ptrs(DSS(DS_seg)); road_project_front(); }
     if (MODE == 8) {
@@ -1447,6 +1450,7 @@ void road_frame(void)
         ds_far_wr(DS_aq_flags_ptr, far_make(SEG(TRK_SEG), (u16)(0x6570 - 2 * DSS(DS_seg))));
         aq_draw_mirror();
     } else { road_set_seg_ptrs(DSS(DS_seg)); road_draw_mirror(); }
+    enh_layer_fg();                                                     /* ENH: foreground layer */
     road_fillmode_end();
     road_draw_hood_overlay();
     if (DSB(DS_racing) && !(MODE & 6)) road_draw_starter_slide();

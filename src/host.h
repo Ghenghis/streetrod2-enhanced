@@ -21,9 +21,11 @@ void host_set_pit_divisor(u16 divisor);
 /* Source of the displayed image: fills a w x h XRGB8888 frame and returns true if it changed since the
  * last call. Installed by the EGA/VGA model (platform/ega.c, 320x200 16 colours). Shown with 4:3
  * aspect. */
-#define HOST_FRAME_MAX_W 640         /* PORT: the 80x25 text mode of the start-up menus (platform/textmode.c) */
-#define HOST_FRAME_MAX_H 200
+#define HOST_FRAME_MAX_W 2560        /* ENH: 320 x 8 (was 640, the 80x25 text mode of platform/textmode.c) */
+#define HOST_FRAME_MAX_H 1600        /* ENH: 200 x 8 (was 200) */
 void host_set_frame_source(bool (*compose)(u32 *xrgb), int w, int h);
+/* ENH: a w x h pixel frame that stands for a logical lw x lh screen (4:3 presentation, mouse mapping). */
+void host_set_frame_source_logical(bool (*compose)(u32 *xrgb), int w, int h, int lw, int lh);
 
 /* Runs due timer ticks (and their audio), handles window events and presents the screen when it
  * changed. Every busy-wait loop of the original (tick waits, key polls, delays) must call this.

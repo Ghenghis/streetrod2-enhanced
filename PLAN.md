@@ -15,14 +15,15 @@ remove it when it is done.
 
 | Task | What to do | For | Time |
 |---|---|---|---|
+| U1 | S2.1: run `build\sr2-enhanced.exe` (Enhanced defaults, 1280x800 frame) next to `build\sr2-enhanced.exe --classic`: menus, garage, one race. The picture must look the same in both, the mouse pointer must follow the mouse in menus and the garage, Alt+Enter full screen fine | S2.1 | 10 min |
 | U3 | Decisions (defaults apply if unanswered), see U3 below | plan | 5 min |
 | U2 | The faithful playtests (U6 in `../StreetRod2/PLAN.md`) are still open. Bugs found there are fixed in the faithful repo first (S5.6) and ported here by hand | engine | - |
 
 ## Status
 
 - **Done:** S0.1 (repo from the faithful port v0.1.0, created while the faithful playtests were still open),
-  S1.1 (render back-end design: `ENHANCED.md`).
-- **Next:** S2.1 (Sonnet), then S2.2 and S2.3 (Opus, Milestone A). Your tasks: **User to-do** above.
+  S1.1 (render back-end design: `ENHANCED.md`), S2.1 (host and coverage foundation; U1 check open).
+- **Next:** S2.2 (Opus), then S2.3 (Opus, Milestone A). Your tasks: **User to-do** above.
 - Escalation rule: a subtask that fails twice on Sonnet → new Opus session with a 5-line note
   (symptom, file, what was tried). Never carry an old transcript over.
 
@@ -56,7 +57,7 @@ Design: `ENHANCED.md` (section numbers below). Stage 1 = S2.1-S2.8, stage 2 = S2
 
 | Id | Task | Model | Size | Status |
 |---|---|---|---|---|
-| S2.1 | Host and coverage (§2, §2.1, §6 step 1): output frame up to 2560×1600 with logical 320×200 kept for presentation and mouse, `enh_compose` in `ega.c`, written mask in `vga_wr`/`vmovedata`, background/foreground layers, race begin/end and frame hooks, options `--res-scale` `--aa` `--motion-delay` `--enh-modes`; picture = scaled EGA (no visible change); `--classic` identical | O | M | |
+| S2.1 | Host and coverage (§2, §2.1, §6 step 1): output frame up to 2560×1600 with logical 320×200 kept for presentation and mouse, `enh_compose` in `ega.c`, written mask in `vga_wr`/`vmovedata`, background/foreground layers, race begin/end and frame hooks, options `--res-scale` `--aa` `--motion-delay` `--enh-modes`; picture = scaled EGA (no visible change); `--classic` identical | O | M | U1 pending |
 | S2.2 | Snapshots and interpolation (§3.1): snapshot ring at `road_frame`, `enh_opp_drawn`, `enh_frame_presented`, relative-heading blend, snaps; `SR_ENH_TRACE` and the deterministic compare clock (§5). Nothing drawn yet | O | M | |
 | S2.3 | **Milestone A** (§3.2, §3.4, §3.5): float road geometry, raster with AA, resolve through the live palette, sky, for the town and the street drag race (modes 0, 1) at draw distance 14, sprites as passthrough; `SR_ENH_COMPARE`; U1 check | O | L | |
 | S2.4 | Mulholland (banks `BL/BR`, hillsides, drop-offs, guard rails, trusses, own sky) and the drag strip (modes 2/4: `L2/R2/C2`, flat, barrier walls) (§3.2) | S | M | |
@@ -69,6 +70,10 @@ Design: `ENHANCED.md` (section numbers below). Stage 1 = S2.1-S2.8, stage 2 = S2
 
 Notes:
 - S1.1 renumbered the old S2.2 (draw distance) to S2.9 and the old S2.3 (widescreen) to S2.10.
+- S2.1: `enh_frame_presented` is already in (with the other frame hooks); `enh_opp_drawn` is left to S2.2. The enhanced
+  compose presents at the display rate only once a subtask draws the view (`rs.draws_view`, S2.3); until then it changes
+  with the EGA picture, so snapshot runs stay comparable. `python tools/classic_check.py [--scaled 4]` checks `--classic`
+  (and the scaled Enhanced frames) against the faithful release frame for frame on a title run and a demo drag race.
 
 ### Phase 3 - Input and settings
 | Id | Task | Model | Size | Status |
