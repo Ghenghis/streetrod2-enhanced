@@ -20,8 +20,9 @@ remove it when it is done.
 
 ## Status
 
-- **Done:** S0.1 (repo from the faithful port v0.1.0, created while the faithful playtests were still open).
-- **Next:** S1.1 (Opus). Your tasks: **User to-do** above.
+- **Done:** S0.1 (repo from the faithful port v0.1.0, created while the faithful playtests were still open),
+  S1.1 (render back-end design: `ENHANCED.md`).
+- **Next:** S2.1 (Sonnet), then S2.2 and S2.3 (Opus, Milestone A). Your tasks: **User to-do** above.
 - Escalation rule: a subtask that fails twice on Sonnet → new Opus session with a 5-line note
   (symptom, file, what was tried). Never carry an old transcript over.
 
@@ -48,20 +49,32 @@ Model: H = Haiku, S = Sonnet, O = Opus. Status goes in the row's last cell (`don
 ### Phase 1 - Design
 | Id | Task | Model | Size | Status |
 |---|---|---|---|---|
-| S1.1 | Design: how a high-resolution, smooth render back end hooks into the driver vector table, race road and `host.c` presentation (reuse `../StreetRodEnhanced/ENHANCED.md` stage 1); write `ENHANCED.md` | O | M | |
+| S1.1 | Design: how a high-resolution, smooth render back end hooks into the driver vector table, race road and `host.c` presentation (reuse `../StreetRodEnhanced/ENHANCED.md` stage 1); write `ENHANCED.md` | O | M | done 2026-10-15 |
 
 ### Phase 2 - Render
+Design: `ENHANCED.md` (section numbers below). Stage 1 = S2.1-S2.8, stage 2 = S2.9.
+
 | Id | Task | Model | Size | Status |
 |---|---|---|---|---|
-| S2.1 | Render back end: high resolution, smooth motion at the original draw distance (was E1) | O | L | |
-| S2.2 | Longer draw distance (was E2; SRE stage 2) | O | M | |
-| S2.3 | Widescreen / integer scaling options (was E5) | S | M | |
+| S2.1 | Host and coverage (§2, §2.1, §6 step 1): output frame up to 2560×1600 with logical 320×200 kept for presentation and mouse, `enh_compose` in `ega.c`, written mask in `vga_wr`/`vmovedata`, background/foreground layers, race begin/end and frame hooks, options `--res-scale` `--aa` `--motion-delay` `--enh-modes`; picture = scaled EGA (no visible change); `--classic` identical | S | M | |
+| S2.2 | Snapshots and interpolation (§3.1): snapshot ring at `road_frame`, `enh_opp_drawn`, `enh_frame_presented`, relative-heading blend, snaps; `SR_ENH_TRACE` and the deterministic compare clock (§5). Nothing drawn yet | O | M | |
+| S2.3 | **Milestone A** (§3.2, §3.4, §3.5): float road geometry, raster with AA, resolve through the live palette, sky, for the town and the street drag race (modes 0, 1) at draw distance 14, sprites as passthrough; `SR_ENH_COMPARE`; U1 check | O | L | |
+| S2.4 | Mulholland (banks `BL/BR`, hillsides, drop-offs, guard rails, trusses, own sky) and the drag strip (modes 2/4: `L2/R2/C2`, flat, barrier walls) (§3.2) | S | M | |
+| S2.5 | Sprites (§3.6): SR2_SHP format-A shapes at continuous scale, signs, banners, opponent and police from native LIB3 pictures, start tree and starter; remove every passthrough | S | L | |
+| S2.6 | Mirror (§3.7) and the town cruise check (§3.8) | S | M | |
+| S2.7 | Aqueduct, mode 8 (§3.3): channel geometry, walls and openings, boxes, pillars, format-B shapes, float roll, rotated opponent, night sky | O | L | |
+| S2.8 | Performance pass (worker bands if over 8 ms), stage 1 acceptance (§3.10), U1/U2 playtest of all five race kinds | S | M | |
+| S2.9 | Longer draw distance, stage 2 (§4): table ends per mode, far scenery fade, opponent at distance, haze, mirror distance (was E2) | O | L | |
+| S2.10 | Widescreen / integer scaling options (was E5) | S | M | |
+
+Notes:
+- S1.1 renumbered the old S2.2 (draw distance) to S2.9 and the old S2.3 (widescreen) to S2.10.
 
 ### Phase 3 - Input and settings
 | Id | Task | Model | Size | Status |
 |---|---|---|---|---|
 | S3.1 | Gamepad and key bindings, A/Z gear keys option (was E4) | S | S | |
-| S3.2 | Launcher from `../StreetRod2/sr2port/launcher/` (and `../StreetRodEnhanced/launcher/`), adapted: game folder, sound device, switches, window and Enhanced options; built by default, `-DSR2E_LAUNCHER=OFF` to skip (was E3) | S | M | |
+| S3.2 | Launcher from `../StreetRod2/sr2port/launcher/` (and `../StreetRodEnhanced/launcher/`), adapted: game folder, sound device, switches, window and a "Picture" group (Graphics enhanced/original, Resolution, Anti-aliasing, Motion, Draw distance, Haze; `ENHANCED.md` §3.9); built by default, `-DSR2E_LAUNCHER=OFF` to skip (was E3) | S | M | |
 
 ### Phase 4 - Release
 | Id | Task | Model | Size | Status |
@@ -92,6 +105,7 @@ Several bugs in one message; one session then fixes them in a batch.
 ### U3 — Decisions (answer when convenient; defaults apply otherwise)
 1. **Defaults**: every enhancement on by default, `--classic` for the original. Default: yes.
 1. **GitHub**: create `street-rod-2-enhanced` when you want it; default: local only until the first release.
+1. **Picture defaults** (`ENHANCED.md` §8): 1280×800 with 2×2 anti-aliasing, all five race kinds enhanced (Aqueduct last), draw distance 60 and haze 30 in stage 2. Default: yes.
 
 ## Decisions
 (Settled answers from U3 go here, dated.)
