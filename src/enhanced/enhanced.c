@@ -25,6 +25,7 @@ enh_options enh = {
     .aa = 2,
     .motion_delay = 110,
     .modes = ENH_MODE_ALL,
+    .draw_scale = 1.25,
 };
 
 /* ---------------------------------------------------------------- options */
@@ -36,6 +37,16 @@ static bool parse_int(const char *v, int lo, int hi, int *out)
     long n = strtol(v, &end, 10);
     if (*end || n < lo || n > hi) return false;
     *out = (int)n;
+    return true;
+}
+
+static bool parse_double(const char *v, double lo, double hi, double *out)
+{
+    if (!v || !*v) return false;
+    char *end;
+    double d = strtod(v, &end);
+    if (*end || !(d >= lo && d <= hi)) return false;
+    *out = d;
     return true;
 }
 
@@ -67,6 +78,7 @@ int enh_parse_arg(const char *arg, const char *val)
     if (!strcmp(arg, "--aa")) return parse_int(val, 1, 4, &enh.aa) ? 2 : 0;
     if (!strcmp(arg, "--motion-delay")) return parse_int(val, 0, 1000, &enh.motion_delay) ? 2 : 0;
     if (!strcmp(arg, "--enh-modes")) return parse_modes(val, &enh.modes) ? 2 : 0;
+    if (!strcmp(arg, "--draw-distance-scale")) return parse_double(val, 1.0, 4.0, &enh.draw_scale) ? 2 : 0;
     return 0;
 }
 

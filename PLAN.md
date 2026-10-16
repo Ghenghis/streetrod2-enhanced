@@ -17,6 +17,7 @@ remove it when it is done.
 |---|---|---|---|
 | U1 | S2.1: run `build\sr2-enhanced.exe` (Enhanced defaults, 1280x800 frame) next to `build\sr2-enhanced.exe --classic`: menus, garage, one race. The picture must look the same in both, the mouse pointer must follow the mouse in menus and the garage, Alt+Enter full screen fine | S2.1 | 10 min |
 | U1 | S2.3 + S2.5 + S2.6 (town and street drag race): run `build\sr2-enhanced.exe` next to `build\sr2-enhanced.exe --classic`; drive in town (cruise to Burger's) and race a street drag race. In Enhanced the road, kerbs, sidewalks, building walls and sky must be sharp (no stair steps) and move smoothly between the game's frames, at the same place as in classic; the sky turns slower when steering (1/8). **Objects** (trees, lamp posts, road signs, hydrants, location signs, billboards, banners): since your S2.5 feedback each is drawn from its largest picture only and scaled by true perspective, so look that they **grow smoothly and slowly** as you approach, with **no size steps** (no LOD changes), the same size as classic when near (rows where classic shows its biggest picture), smaller than classic's jumps would suggest in the middle distance, and that they now appear at the far end of the road (fading in) instead of popping in halfway; trees stand behind the buildings. **Mirror**: now drawn by Enhanced too: sharp road, walls, trees and banners in it, the same view as classic, moving smoothly, frame lines crisp; the opponent / police car and the starter in the mirror are still classic pixels (later subtask). Report anything misplaced, flickering, popping or too big | S2.3, S2.5, S2.6 | 15 min |
+| U1 | S2.9 part 1 (draw distance x1.25, town and street drag race): run `build\sr2-enhanced.exe` (default 1.25) next to `build\sr2-enhanced.exe --draw-distance-scale 1` (the original distance) and `--classic`. Look at: the road, walls and kerbs now reach about 25 % further (17.5 instead of 14 segments) with **no popping at the far edge** (objects fade in over the last segment, nothing appears suddenly), **no road over the sky** (the far road ends just below the horizon panorama / the town's rooftop panorama, also when the car bounces; only crests may rise above it), objects stand on the road's far part and never float beyond its end; **town ends sane** (cruise to Burger's: the street ahead shows only town blocks, no race road); **drag race after the finish**: past the finish line plain flat straight road with centre dashes, no trees / signs / curves, no jump when crossing the line or while the car rolls to a stop. The mirror is unchanged | S2.9 | 10 min |
 | U3 | Decisions (defaults apply if unanswered), see U3 below | plan | 5 min |
 | U2 | The faithful playtests (U6 in `../StreetRod2/PLAN.md`) are still open. Bugs found there are fixed in the faithful repo first (S5.6) and ported here by hand | engine | - |
 
@@ -27,8 +28,9 @@ remove it when it is done.
   S2.2 (snapshots, interpolation, `SR_ENH_TRACE`, compare clock), S2.3 (Milestone A: enhanced town and street drag
   race view, `SR_ENH_COMPARE`; its U1 check open), the road-side objects part of S2.5 for modes 0 and 1 (pulled
   forward on the user's S2.3 playtest; since the S2.5 playtest the largest LOD only at true 1/z; the rest of S2.5 after
-  S2.4), S2.6 for modes 0 and 1 (enhanced mirror, town cruise checked; U1 check open).
-- **Next:** S2.4 (Sonnet: Mulholland and the drag strip). Your tasks: **User to-do** above (the S2.3 + S2.5 + S2.6 U1 check first).
+  S2.4), S2.6 for modes 0 and 1 (enhanced mirror, town cruise checked; U1 check open), the modes 0 and 1 part of
+  S2.9 (draw distance x1.25 = 17.5 segments, `--draw-distance-scale`, on the user's request; U1 check open).
+- **Next:** S2.4 (Sonnet: Mulholland and the drag strip). Your tasks: **User to-do** above (the S2.3 + S2.5 + S2.6 + S2.9 U1 check first).
 - Escalation rule: a subtask that fails twice on Sonnet → new Opus session with a 5-line note
   (symptom, file, what was tried). Never carry an old transcript over.
 
@@ -70,7 +72,7 @@ Design: `ENHANCED.md` (section numbers below). Stage 1 = S2.1-S2.8, stage 2 = S2
 | S2.6 | Mirror (§3.7) and the town cruise check (§3.8) | S | M | modes 0, 1 done 2026-10-16 (U1 pending); opponent / starter in the mirror passthrough |
 | S2.7 | Aqueduct, mode 8 (§3.3): channel geometry, walls and openings, boxes, pillars, format-B shapes, float roll, rotated opponent, night sky | O | L | |
 | S2.8 | Performance pass (worker bands if over 8 ms), stage 1 acceptance (§3.10), U1/U2 playtest of all five race kinds | S | M | |
-| S2.9 | Longer draw distance, stage 2 (§4): table ends per mode, far scenery fade, opponent at distance, haze, mirror distance (was E2) | O | L | |
+| S2.9 | Longer draw distance, stage 2 (§4): table ends per mode, far scenery fade, opponent at distance, haze, mirror distance (was E2) | O | L | modes 0, 1 at factor 1.25 done 2026-10-16 (U1 pending); rest open |
 | S2.10 | Widescreen / integer scaling options (was E5) | S | M | |
 
 Notes:
@@ -140,6 +142,30 @@ Notes:
   threshold `--mirror-min` 95: the original's near mirror rows step up to 15 px per pixel row); view edges unchanged
   (drag 99.7-99.9 %, town 96.9-99.1 %). Render 7.2 ms per displayed frame in the cruise at 1280x800 2x2 (headless, the S2.5 build 6.1 ms back to back; the machine was loaded). Identity: classic_check plain, `--clock`, `--classic --check`, faithful smoke 15/15 ok; `--scaled 4` race_drag diverged (whole race, not the picture) in 3 of 7 runs under 100 % external CPU load, ok in the last 2 (the S2.5 build 6/6 ok in the same period): rerun when the machine is idle. Town cruise (§3.8): mode 0 runs the normal renderer, compared in
   the cruise run.
+- S2.9 part 1 (modes 0 and 1, 2026-10-16, on the user's request "increase the draw in-distance by 25 % for the
+  scenery and objects"): `--draw-distance-scale X` (1..4, default 1.25; 1 = the original's 14 segments; `--classic`
+  ignores it), one factor for road, walls, objects, fade and table ends (`enh_road.c` `cam_of`, `road`): far end
+  z = 4 + 112 x scale (144 = 17.5 segments), each segment up to the one holding the far end drawn with its own flags
+  (the compare view keeps the original's stretch of its last row to the far end), objects out to the far end, fading
+  in over its last segment (dithered `ras_alpha`, as before). Table ends (§4 item 2), live view only: past the street
+  drag race's finish (segments >= track_end 0x17C, the road course in the table) plain road (only the course's
+  centre-dash bit kept), no objects, YAW / HGT held from the finish boundary (or the car once past it: straight on at
+  the car's heading, continuous); the town is clamped at its last segment 0xB3 (never reached at 1.25: Burger's at
+  seg 0x9B sees to 0xAC; up to scale 1.7); the town's road surface is clipped to rows >= 63 (the rooftop panorama's
+  base, its fill there is the road colour) so the far road never covers the panorama (§4 item 6); the drag race's far
+  road at z 144 lies 1.6 px below the horizon row (flat road reaches the horizon only beyond z ~ 340, scale 3).
+  The mirror is unchanged (reads the table as the original). `tools/enh_compare.py` runs every check at scale 1
+  (unchanged: drag 99.7-99.9 %, town 96.9-99.1 %, mirror 96.0-99.7 %, all object calls and sizes) and repeats each run
+  at `--scale` 1.25, where the compare tool (`D` lines) renders seg + 1 .. seg + 14 alone and the whole view: near
+  samples changed 0 of 260 M (drag) / 24 M (drive home) / 26 M (cruise), extension 8.7 M / 0.4 M / 0.5 M samples.
+  Render: no measurable cost, 8.2-11.0 ms per displayed frame at 1280x800 2x2 headless at 1.25 against 9.7-10.8 ms at
+  1 back to back (the machine was loaded: S2.6 measured 7.2 ms). Identity: `--classic --check`, classic_check plain
+  and `--clock` ok; `--scaled 4` race_drag failed in 2 of 3 runs (once the classic run itself diverged from the
+  faithful one: wall-clock timing under load; that run uses `--enh-modes none`), ok in the last; faithful smoke 15/15.
+  Remaining for S2.9: `--draw-distance N` up to 120 (generalise the factor; fewer slices far away, horizon clip for
+  far road), the other modes' table ends (Mulholland past 0x3DD, drag strip past 0x58, Aqueduct past 0x156) once
+  S2.4 draws them, the town end beyond scale 1.7 (a closing view instead of the clamp), opponent and police at
+  distance, haze, mirror distance, cost at N = 60 / 120.
 
 ### Phase 3 - Input and settings
 | Id | Task | Model | Size | Status |

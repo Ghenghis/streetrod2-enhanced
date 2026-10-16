@@ -52,6 +52,7 @@ typedef struct {
     double O, opp_lat;          /* opponent position in sub-steps, lateral position */
     double roll, rot_cx, rot_cy, aq_pitch, aq_dy;
     bool compare;               /* the compare view (SR_ENH_COMPARE >= 2): the original's constant-per-row details */
+    int rows;                   /* compare aid: front segments drawn, seg + 1 .. seg + rows (0 = all, -1 = none) */
 } enh_view;
 
 /* YAW / HGT at a continuous position P (sub-steps), linear between segments; indices clamped to the track (§1). */

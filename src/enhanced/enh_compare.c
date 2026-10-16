@@ -21,6 +21,10 @@
  *   O race frames N  calls orig_matched/orig enh_matched/enh  size ok/checks max err px
  * Mirror (S2.6): the same edge match inside the mirror (enh_mirror_px), reported apart:
  *   M frame  h ... v ...       M race frames N  h ... v ...
+ * Draw distance (S2.9, --draw-distance-scale > 1): the front segments seg + 1 .. seg + 14 rendered alone (the compare
+ * view's) must show unchanged in the full view, sample for sample wherever they cover the sky render (the extension is
+ * drawn first, far to near, and never in front of them); the extension's visible samples are counted:
+ *   D frame near_changed near_samples extension_samples      D race frames N  near changed/samples  extension N
  * SR_ENH_COMPARE=3 also lists the unmatched edges and object calls of each frame (first 12). SR_ENH_COMPARE_DIR=dir writes every
  * SR_ENH_COMPARE_EVERY-th (default 25) compared frame as cmpNNNNN.bmp: original, enhanced, difference. */
 #include "enh_internal.h"
@@ -52,6 +56,7 @@ static struct {
     unsigned long on, om, en, em, sn, sm;           /* object calls: original / matched, enhanced / matched; sizes */
     unsigned long kinds[4];                         /* original calls by kind */
     double smax;
+    unsigned long dn, dd, dx;                       /* draw distance check: near samples / changed, extension samples */
 } cmp;
 
 /* ---------------------------------------------------------------- road-side object calls */
@@ -229,6 +234,41 @@ static void dump(unsigned frame, const u8 pal[17])
     }
 }
 
+/* the draw distance check of the view just rendered (the raster still holds it) */
+static void dist_check(enh_view *v, unsigned frame)
+{
+    static u8 *full, *near_;
+    static size_t cap;
+    if (enh.draw_scale <= 1.0) return;
+    size_t w = (size_t)320 * ras_S(), n = w * (size_t)(ROWS * ras_S());
+    if (n > cap) {
+        free(full); free(near_);
+        full = malloc(n); near_ = malloc(n);
+        cap = full && near_ ? n : 0;
+        if (!cap) return;
+    }
+    for (int j = 0; j < ROWS * ras_S(); j++) memcpy(full + j * w, ras_row(j), w);
+    v->rows = 14;
+    enh_road_render(v);
+    for (int j = 0; j < ROWS * ras_S(); j++) memcpy(near_ + j * w, ras_row(j), w);
+    v->rows = -1;                                           /* sky and mirror only */
+    enh_road_render(v);
+    v->rows = 0;
+    unsigned long dn = 0, dd = 0, dx = 0;
+    for (int j = 0; j < ROWS * ras_S(); j++) {
+        const u8 *bg = ras_row(j), *f = full + j * w, *q = near_ + j * w;
+        for (size_t i = 0; i < w; i++) {
+            if (q[i] != bg[i]) { dn++; dd += f[i] != q[i]; }
+            else dx += f[i] != bg[i];
+        }
+    }
+    objs.n[0] = 0;                                          /* the extra renders' object records */
+    objs.sn = objs.sm = 0;
+    objs.smax = 0;
+    fprintf(cmp.log, "D %u %lu %lu %lu\n", frame, dd, dn, dx);
+    cmp.dn += dn; cmp.dd += dd; cmp.dx += dx;
+}
+
 void enh_compare_frame(const enh_snap *s, int page)
 {
     if (cmp.level < 2 || (page != 1 && page != 2)) return;
@@ -287,6 +327,7 @@ void enh_compare_frame(const enh_snap *s, int page)
     if (objs.smax > cmp.smax) cmp.smax = objs.smax;
     for (int i = 0; i < objs.n[1]; i++) cmp.kinds[objs.r[1][i].kind & 3]++;
     objs.n[1] = 0;
+    dist_check(&v, s->frame);
     cmp.hn += hn; cmp.hm += hm; cmp.hen += hen; cmp.hem += hem;
     cmp.vn += vn; cmp.vm += vm; cmp.ven += ven; cmp.vem += vem;
     unsigned tn = hn + hen + vn + ven, tm = hm + hem + vm + vem;
@@ -305,6 +346,9 @@ void enh_compare_race_end(void)
             cmp.mir[3], cmp.mir[2], cmp.mir[5], cmp.mir[4], cmp.mir[7], cmp.mir[6]);
     fprintf(cmp.log, "O race frames %u  calls %lu/%lu %lu/%lu  size %lu/%lu max err %.2f px  (shapes %lu hydrants %lu pictures %lu banners %lu)\n", cmp.frames, cmp.om,
             cmp.on, cmp.em, cmp.en, cmp.sm, cmp.sn, cmp.smax, cmp.kinds[0], cmp.kinds[1], cmp.kinds[2], cmp.kinds[3]);
+    if (enh.draw_scale > 1.0)
+        fprintf(cmp.log, "D race frames %u  near changed %lu/%lu  extension %lu  (scale %.2f)\n", cmp.frames, cmp.dd, cmp.dn,
+                cmp.dx, enh.draw_scale);
     if (cmp.level >= 3) {
         fprintf(cmp.log, "K unmatched by row:");
         for (int y = 0; y < ROWS; y++) if (cmp.miss_y[y]) fprintf(cmp.log, " %d:%lu", y + ENH_VIEW_Y0, cmp.miss_y[y]);

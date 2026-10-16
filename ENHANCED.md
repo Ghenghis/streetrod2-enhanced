@@ -281,6 +281,7 @@ Mode 0 uses the normal renderer and data: enhanced in stage 1, switchable separa
 | `--motion-delay MS` | one game frame (110) | 0 = latest snapshot, no interpolation (for alignment checks) |
 | `--enh-modes LIST` | `town,drag,strip,mulholland,aqueduct` | modes drawn enhanced; the others stay original |
 | `--draw-distance N` | 60 (stage 2) | 14..120 segments |
+| `--draw-distance-scale X` | 1.25 | 1..4: the draw distance as a multiple of the original's 14 segments (S2.9 part 1, modes 0, 1: 17.5 segments); 1 = the original's; picture only; S2.9 generalises it into `--draw-distance` |
 | `--haze 0..100` | 30 (stage 2) | |
 
 Launcher (S3.2): a "Picture" group with Graphics (enhanced / original), Resolution, Anti-aliasing, Motion, and in

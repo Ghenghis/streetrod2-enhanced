@@ -1,6 +1,6 @@
 /* Street Rod 2 Enhanced: float road geometry and sky of the normal renderer (ENHANCED.md §3.2, §3.5).
- * S2.3 (Milestone A): the town cruise and the street drag race (road modes 0, 1) at the original draw distance
- * (14 segments). The road is projected in float with the formulas of road_proj_x / road_proj_y (race_road.c) at the
+ * S2.3 (Milestone A): the town cruise and the street drag race (road modes 0, 1), since S2.9's first part at
+ * --draw-distance-scale times the original draw distance (14 segments; default 1.25 = 17.5, §4). The road is projected in float with the formulas of road_proj_x / road_proj_y (race_road.c) at the
  * interpolated view, each segment cut into slices so that YAW / HGT / edges vary continuously, and emitted far to
  * near in the original's painter's order (road_draw_front: town walls, then the band of each row, then the row's
  * road-side objects, enh_sprite.c, S2.5). The opponent is the original's pixels (passthrough brackets in
@@ -11,11 +11,12 @@
  * World: a position Pw along the road in sub-steps (64 per segment), lateral x and height y in road units (road
  * 0x5DC..0xCE4, surface y 2000, eye 0x76C). Depth z = (Pw - P) / 8 + 4, so segment seg + k lies at the original's row
  * depth 8k + 4 - substep / 8 (without the original's truncation of substep / 8; the compare quantizes P). Row 0
- * (z = 4) is the near clip; the far end is z = 116 (the original pins row 14 there). Segment s carries the flags
+ * (z = 4) is the near clip; the far end is z = 4 + 112 x scale (116 at 1: the original pins row 14 there). Segment s carries the flags
  * L/R/C[s] for the band from boundary s - 1 to boundary s, and the edges, YAW and HGT of boundary s. */
 #include "enh_internal.h"
 #include "enhanced.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,7 +32,9 @@
 #define XOFF    0.5
 #define YOFF  (-0.4)           /* -0.5, less a margin: an exact row value (the eye level 60) stays on its row */
 #define SKY_RATE (1.0 / 8.0)    /* sky scroll: 1/8 of the original's 2 px (panorama 4 px) per heading unit (§3.5) */
-#define FAR_Z   116.0           /* row 14 */
+#define FAR_Z   116.0           /* the original's row 14: the far end at --draw-distance-scale 1 */
+#define TOWN_END 0xB3           /* the last town segment (track_build_all: town 0 .. 0xB3, race road from 0xB4) */
+#define TOWN_HORIZON 63.0       /* the town's fill below the rooftop panorama (sky): the road surface stays below it */
 #define SURFACE 2000.0
 #define EYE     1900.0          /* 0x76C */
 
@@ -43,10 +46,25 @@ typedef struct {
     int start_seg;
     double w;                   /* outer band width: 400 (200 Mulholland) */
     bool mirror;                /* the mirror's projection (proj_x / proj_y) */
+    double far_z;               /* the front's far end: 4 + 112 x --draw-distance-scale (z = 116 at 1) */
+    int rows;                   /* enh_view.rows (compare aid) */
+    /* stage 2 table ends (ENHANCED.md §4 item 2), live view only: segments from `synth` on are plain road (no objects),
+     * YAW / HGT held beyond position `hold` */
+    int synth;
+    double hold;
 } cam;
 
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
 static u16 flag(u16 arr, int s) { return TRKW(arr, clampi(s, 0, TRK_N - 1)); }
+
+/* The front view's track: past the street drag race's finish the table holds the road course (curves, hills, its
+ * objects); the live view shows plain flat road there instead: from segment `synth` (track_end) on only the centre
+ * dashes (C & 8, the course's dash pattern) are kept, and beyond the finish boundary (or the car, once past it) YAW / HGT
+ * hold their value, so the road runs straight on at the car's heading. The compare view and the mirror read the table
+ * as the original. */
+static u16 cflag(const cam *c, u16 arr, int s) { return s < c->synth ? flag(arr, s) : arr == TRK_C ? flag(TRK_C, s) & 8 : 0; }
+static double yaw_at(const cam *c, double Pw) { return enh_track_yaw(fmin(Pw, c->hold)); }
+static double hgt_at(const cam *c, double Pw) { return enh_track_hgt(fmin(Pw, c->hold)); }
 
 /* ---------------------------------------------------------------- mirror projection (road_project_mirror) */
 
@@ -71,7 +89,7 @@ static double proj_x(const cam *c, double Pw, double xw)
 {
     if (c->mirror) return 280.0 + mir_dx(c, Pw) / 4.0 - (c->cx - xw) / mir_z(c, Pw) + XOFF;
     double z = (Pw - c->P) / 8.0 + 4.0;
-    double dx = c->heading - enh_track_yaw(Pw);
+    double dx = c->heading - yaw_at(c, Pw);
     return 160.0 + dx - 4.0 * (c->cx - xw) / z + XOFF;
 }
 
@@ -79,14 +97,14 @@ static double proj_y(const cam *c, double Pw, double yw)
 {
     if (c->mirror) return 36.0 + mir_dy(c, Pw) + (yw - c->cy) / mir_z(c, Pw) + YOFF;
     double z = (Pw - c->P) / 8.0 + 4.0;
-    double dy = (c->mode & 6) ? 0.0 : c->hgt - enh_track_hgt(Pw);
+    double dy = (c->mode & 6) ? 0.0 : c->hgt - hgt_at(c, Pw);
     return 2.0 * dy + 4.0 * (yw - c->cy) / z + c->bounce + 60.0 + YOFF;
 }
 
 /* road edges of boundary s (edges_of in race_road.c: C & 0xE0) */
-static void edges_at(int s, double *xl, double *xr)
+static void edges_at(const cam *c, int s, double *xl, double *xr)
 {
-    u16 cm = flag(TRK_C, s) & 0xE0;
+    u16 cm = cflag(c, TRK_C, s) & 0xE0;
     if (cm == 0)        { *xl = 0x5DC; *xr = 0xCE4; }
     else if (cm & 0x80) { *xl = 0x7D0; *xr = 0xAF0; }
     else if (cm & 0x20) { *xl = 0xCE4; *xr = 0xCE4; }      /* one-sided closures (zero width) */
@@ -100,8 +118,8 @@ static sect section(const cam *c, double Pw)
 {
     sect p;
     double s1 = ceil(Pw / 64.0), f = (Pw - (s1 - 1) * 64.0) / 64.0, l0, r0, l1, r1;
-    edges_at((int)s1 - 1, &l0, &r0);
-    edges_at((int)s1, &l1, &r1);
+    edges_at(c, (int)s1 - 1, &l0, &r0);
+    edges_at(c, (int)s1, &l1, &r1);
     p.Pw = Pw;
     p.xl = proj_x(c, Pw, l0 + (l1 - l0) * f);
     p.xr = proj_x(c, Pw, r0 + (r1 - r0) * f);
@@ -128,8 +146,8 @@ static void band_quad(u8 col, double af, double bf, double an, double bn, const 
 
 static void town_walls(const cam *c, int s, const sect *p, int n, bool left)
 {
-    u16 F = flag(left ? TRK_L : TRK_R, s), Fm1 = flag(left ? TRK_L : TRK_R, s - 1);
-    u16 C = flag(TRK_C, s), Cm1 = flag(TRK_C, s - 1);
+    u16 F = cflag(c, left ? TRK_L : TRK_R, s), Fm1 = cflag(c, left ? TRK_L : TRK_R, s - 1);
+    u16 C = cflag(c, TRK_C, s), Cm1 = cflag(c, TRK_C, s - 1);
     if (C & 4) return;                                          /* intersection */
     int k = (F & 8) ? 1 : 2;
     double top = EYE - (SURFACE - EYE) / k;                     /* the tall part */
@@ -170,7 +188,7 @@ static double dash_width(const cam *c, int kband, double Pw)
 
 static void band(const cam *c, int s, int kband, const sect *p, int n)
 {
-    u16 C = flag(TRK_C, s), L = flag(TRK_L, s), R = flag(TRK_R, s);
+    u16 C = cflag(c, TRK_C, s), L = cflag(c, TRK_L, s), R = cflag(c, TRK_R, s);
     bool cross = C & 1;
     if (cross && (C & 4)) return;                               /* intersection: nothing drawn */
     bool wide = (c->mode & 6) && s < c->start_seg + 5;
@@ -212,7 +230,7 @@ static void band(const cam *c, int s, int kband, const sect *p, int n)
  * object crossing it does not jump. */
 static double est_x(const cam *c, double Pw, double xw)
 {
-    double z = (Pw - c->P) / 8.0 + 4.0, dx = c->heading - enh_track_yaw(Pw);
+    double z = (Pw - c->P) / 8.0 + 4.0, dx = c->heading - yaw_at(c, Pw);
     if (c->compare) return road_proj_x((s16)lround(z), (s16)lround(xw), (s16)(int)lround(dx));
     double u = 4.0 * (c->cx - xw) / z - dx;
     return 160.0 - u + 0.5 * fmin(fmax(u / 2.0, -1.0), 1.0);
@@ -220,23 +238,24 @@ static double est_x(const cam *c, double Pw, double xw)
 
 static double est_y(const cam *c, double Pw, double yw)
 {
-    double z = (Pw - c->P) / 8.0 + 4.0, dy = (c->mode & 6) ? 0.0 : c->hgt - enh_track_hgt(Pw);
+    double z = (Pw - c->P) / 8.0 + 4.0, dy = (c->mode & 6) ? 0.0 : c->hgt - hgt_at(c, Pw);
     if (c->compare) return road_proj_y((s16)lround(z), (s16)lround(yw), (s16)(int)lround(dy));
     double v = 2.0 * dy + 4.0 * (yw - c->cy) / z;
     return v - 0.5 * fmin(fmax(v / 2.0, -1.0), 1.0) + c->bounce + 60.0;
 }
 
-/* front_objects of segment s (row k = s - seg0; the original's rows < 11, live up to row 14) at its far boundary,
- * the objects of `pass` */
+/* front_objects of segment s (row k = s - seg0; the original's rows < 11, live out to the road's far end) at its far
+ * boundary, the objects of `pass`; none on the plain road past a table end */
 static void objects(const cam *c, int s, int pass)
 {
     int k = s - c->seg0;
-    if (k < 1 || k > (c->compare ? 10 : 14)) return;   /* the original: rows < 11; live: to the road's far end */
+    if (k < 1 || (c->compare && k > 10) || s >= c->synth) return;      /* the original: rows < 11 */
     double Pw = s * 64.0, l, r;
-    edges_at(s, &l, &r);
     enh_bound b = { .s = s, .k = k, .depth = k, .depth_banner = k };
     b.z = (Pw - c->P) / 8.0 + 4.0;
-    b.fade = c->compare ? 1.0 : fmin(fmax((FAR_Z - b.z) / 8.0, 0.0), 1.0);  /* fade in over the last segment */
+    b.fade = c->compare ? 1.0 : fmin(fmax((c->far_z - b.z) / 8.0, 0.0), 1.0);   /* fade in over the last segment */
+    if (b.fade <= 0.0) return;
+    edges_at(c, s, &l, &r);
     b.xl = est_x(c, Pw, l);
     b.xr = est_x(c, Pw, r);
     b.xol = est_x(c, Pw, 0x5DC - c->w);
@@ -270,17 +289,26 @@ static void segment(const cam *c, int s, int kband, double Pa, double Pb)
         town_walls(c, s, p, n, true);
         town_walls(c, s, p, n, false);
     }
+    /* the town's far road stays below the rooftop panorama's base (its fill there is the road colour, §4 item 6) */
+    if (split) ras_clip(0, TOWN_HORIZON, 320, ENH_VIEW_Y1);
     band(c, s, kband, p, n);
+    if (split) ras_clip(0, ENH_VIEW_Y0, 320, ENH_VIEW_Y1);
     objects(c, s, split ? ENH_OBJ_IN : ENH_OBJ_ALL);
 }
 
 static void road(const cam *c)
 {
-    /* segments seg + 1 .. seg + 14; the last reaches out to z = 116 (the original pins row 14 there) */
-    double Pnear = c->P, Pfar = c->P + (FAR_Z - 4.0) * 8.0;
-    int s_far = c->seg0 + 14, s_near = c->seg0 + 1;
+    /* out to z = far_z (116 = the original's row 14 at --draw-distance-scale 1, 144 at 1.25: 17.5 segments). Comparing,
+     * the last segment seg + ceil(N) is stretched or cut to the far end, as the original pins its row 14 at z = 116;
+     * live, each segment up to the one holding the far end is drawn with its own flags. The town stops at its last
+     * segment (race-road segments never show in the town; its last stop, Burger's at seg 0x9B, sees to 0xAC). */
+    if (c->rows < 0) return;
+    double Pnear = c->P, Pfar = c->P + (c->far_z - 4.0) * 8.0;
+    if (!c->racing) Pfar = fmin(Pfar, TOWN_END * 64.0);
+    int s_end = c->compare ? c->seg0 + (int)ceil((c->far_z - 4.0) / 8.0 - 1e-9) : (int)ceil(Pfar / 64.0);
+    int s_near = c->seg0 + 1, s_far = c->rows > 0 && s_end > c->seg0 + c->rows ? c->seg0 + c->rows : s_end;
     for (int s = s_far; s >= s_near; s--) {
-        double Pa = fmax((s - 1) * 64.0, Pnear), Pb = s == s_far ? Pfar : fmin(s * 64.0, Pfar);
+        double Pa = fmax((s - 1) * 64.0, Pnear), Pb = s == s_end ? Pfar : fmin(s * 64.0, Pfar);
         if (Pb > Pa) segment(c, s, s - c->seg0, Pa, Pb);
     }
 }
@@ -454,7 +482,7 @@ static void mir_objects(const cam *c, int r, int pass)
 {
     int bnd = c->seg0 - r;
     double Pw = bnd * 64.0, l, rr;
-    edges_at(bnd, &l, &rr);
+    edges_at(c, bnd, &l, &rr);
     enh_bound b = { .s = bnd - 1, .k = r, .mirror = true, .depth = (r >> 1) + 7, .depth_banner = r + 5, .fade = 1.0 };
     b.z = 4.0 * mir_z(c, Pw);
     b.xl = mir_est_x(c, Pw, l);
@@ -490,6 +518,8 @@ static void mirror(const cam *c0)
 {
     cam c = *c0;
     c.mirror = true;
+    c.synth = INT_MAX;          /* the mirror reads the table as the original (no table end behind the car) */
+    c.hold = INFINITY;
     /* mirror_draw_backdrop: the frame (rows 20..44) and its mount (rows 18, 19), then the horizon strip of the sky
      * picture above the far row, inside the mirror's clip */
     mir_pic(232, 104, 80, 25, 240, 20);
@@ -523,24 +553,35 @@ static void mirror(const cam *c0)
 
 /* ---------------------------------------------------------------- view */
 
-/* Compare aid (SR_ENH_COMPARE=3): the original's front rows next to the float projection of the same boundaries
- * (rows 8..14 from its row tables, rows 1..7, which the mirror projection overwrites, through road_proj_x / _y),
- * then the mirror's rows 0..7 from the tables. */
-void enh_road_debug_rows(const enh_view *v, FILE *f)
+static cam cam_of(const enh_view *v)
 {
     const enh_snap *b = v->b;
     cam c = {
         .P = v->P, .cx = v->cam_x, .cy = v->cam_y, .hgt = v->cur_height, .heading = v->heading,
         .bounce = v->bounce_y, .mode = b->mode, .seg0 = (int)floor(v->P / 64.0), .racing = b->racing != 0,
         .compare = v->compare, .start_seg = b->start_seg, .w = b->mode == 0x10 ? 200 : 400,
+        .far_z = 4.0 + (FAR_Z - 4.0) * enh.draw_scale, .rows = v->rows, .synth = INT_MAX, .hold = INFINITY,
     };
+    if (c.racing && !c.compare && b->track_end > 0) {          /* modes 0, 1: the finish at track_end 0x17C */
+        c.synth = b->track_end;
+        c.hold = fmax((b->track_end - 1) * 64.0, c.P);
+    }
+    return c;
+}
+
+/* Compare aid (SR_ENH_COMPARE=3): the original's front rows next to the float projection of the same boundaries
+ * (rows 8..14 from its row tables, rows 1..7, which the mirror projection overwrites, through road_proj_x / _y),
+ * then the mirror's rows 0..7 from the tables. */
+void enh_road_debug_rows(const enh_view *v, FILE *f)
+{
+    cam c = cam_of(v);
     int q = (int)fmod(c.P, 64.0) >> 3;
     for (int k = 1; k < 8; k++) {           /* rows 1..7 recomputed with the original's own projection */
         int s = c.seg0 + k;
         s16 z = (s16)(12 - q + 8 * (k - 1)), dx = (s16)(DSS(DS_heading) - TRKS(TRK_YAW, s));
         s16 dy = (s16)(DSS(DS_cur_height) - TRKS(TRK_HGT, s));
         double l, r;
-        edges_at(s, &l, &r);
+        edges_at(&c, s, &l, &r);
         sect p = section(&c, s * 64.0);
         fprintf(f, "  row %2d orig xl %4d xr %4d y %3d | float xl %7.2f xr %7.2f y %6.2f\n", k,
                 road_proj_x(z, (s16)l, dx), road_proj_x(z, (s16)r, dx), road_proj_y(z, 2000, dy),
@@ -569,11 +610,7 @@ bool enh_road_render(const enh_view *v)
     const enh_snap *b = v->b;
     if (!b || (b->mode != 0 && b->mode != 1) || b->fallen) return false;   /* S2.3: modes 0 and 1 */
     if (!ras_begin(enh.res_scale * enh.aa)) return false;
-    cam c = {
-        .P = v->P, .cx = v->cam_x, .cy = v->cam_y, .hgt = v->cur_height, .heading = v->heading,
-        .bounce = v->bounce_y, .mode = b->mode, .seg0 = (int)floor(v->P / 64.0), .racing = b->racing != 0,
-        .compare = v->compare, .start_seg = b->start_seg, .w = b->mode == 0x10 ? 200 : 400,
-    };
+    cam c = cam_of(v);
     sky(&c);
     road(&c);
     mirror(&c);

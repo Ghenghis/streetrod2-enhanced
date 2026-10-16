@@ -22,6 +22,8 @@ typedef struct {
     int aa;                 /* --aa 1..4: samples per axis, res_scale * aa <= 16 (default 2) */
     int motion_delay;       /* --motion-delay MS: interpolation delay, 0 = latest snapshot (default 110) */
     unsigned modes;         /* --enh-modes LIST: ENH_MODE_* drawn enhanced (default all) */
+    double draw_scale;      /* --draw-distance-scale X (1..4): the enhanced view's draw distance as a multiple of the
+                             * original's 14 segments (default 1.25 = 17.5; 1 = the original's); picture only */
     bool track;             /* engine hook gate: the written mask is kept (a race with the overlay on) */
 } enh_options;
 
