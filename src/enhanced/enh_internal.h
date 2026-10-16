@@ -4,6 +4,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #include "types.h"
 
@@ -49,6 +50,7 @@ typedef struct {
     double cam_x, cam_y, cur_height, bounce_y, wheel;
     double O, opp_lat;          /* opponent position in sub-steps, lateral position */
     double roll, rot_cx, rot_cy, aq_pitch, aq_dy;
+    bool compare;               /* the compare view (SR_ENH_COMPARE >= 2): the original's constant-per-row details */
 } enh_view;
 
 /* YAW / HGT at a continuous position P (sub-steps), linear between segments; indices clamped to the track (§1). */
@@ -56,5 +58,29 @@ double enh_track_yaw(double P);
 double enh_track_hgt(double P);
 /* The interpolated view at host time `now_ns`; false when no snapshot exists (no race frame yet). */
 bool enh_interp(uint64_t now_ns, enh_view *out);
+
+/* ---- raster (enh_raster.c, §3.4): palette-index samples of the view rows at S = res_scale * aa per logical pixel */
+#define ENH_VIEW_Y0 18              /* the original's view clip: rows 18 .. 101 */
+#define ENH_VIEW_Y1 102
+#define ENH_SPLIT_Y 0x63            /* race split (race_drive.c): rows >= 99 show the dashboard page */
+bool ras_begin(int S);
+int ras_S(void);
+u8 *ras_row(int j);                 /* sample row j (0 = top of logical row ENH_VIEW_Y0), 320 * S samples */
+void ras_poly(const double *xy, int n, u8 colour);                  /* convex polygon, logical coordinates */
+void ras_rect(double x0, double y0, double x1, double y1, u8 colour);
+void ras_resolve(const u8 pal[17], const u8 *cover, u32 *out, int res_scale, int aa);
+void ras_downscale(u8 *idx);        /* 320 x (ENH_VIEW_Y1 - ENH_VIEW_Y0) indices, most frequent per pixel */
+u32 enh_pal_rgb(u8 attribute_reg);
+
+/* ---- road and sky (enh_road.c, §3.2, §3.5) */
+void enh_sky_capture(void);         /* page 1 rows 0x66.. (sky, panorama), at the first frame of a race */
+bool enh_road_render(const enh_view *v);    /* false: not drawn in this mode (the original's picture stays) */
+void enh_road_debug_rows(const enh_view *v, FILE *f);    /* compare aid (SR_ENH_COMPARE=3) */
+
+/* ---- compare (enh_compare.c, §5): SR_ENH_COMPARE >= 2 */
+void enh_compare_init(int level);
+void enh_compare_frame(const enh_snap *s, int page);
+void enh_compare_race_end(void);
+bool enh_mirror_px(int x, int y);   /* (x, y) belongs to the mirror (the original's until S2.6) */
 
 #endif

@@ -8,10 +8,13 @@ with snapshots every SR_SNAPSHOT_MS. The run timing is wall-clock, so the two ru
 path is "ok" when every distinct frame of the classic run is also a frame of the faithful run (and the other way round,
 reported as coverage). Static screens (title, menus) and race frames of the deterministic demo autopilot match exactly
 when the picture is the same. With --scaled N the Enhanced defaults run too (output 320*N x 200*N); their frames,
-sampled back to 320x200, must be faithful frames as long as the picture is the scaled EGA one (S2.1).
+sampled back to 320x200, must be faithful frames as long as the picture is the scaled EGA one (S2.1); since S2.3 draws
+the race view, that run uses --enh-modes none.
 With --clock the deterministic host clock (SR_ENH_COMPARE=1, ENHANCED.md §5) is checked instead: two --classic runs
 and one Enhanced run (--res-scale 4) of each path must give the same frames in the same order (the shorter run is a
-prefix: --run-ms stays wall-clock while the compare clock runs faster than real time).
+prefix: --run-ms stays wall-clock while the compare clock runs faster than real time). Since S2.3 the road view
+(rows 18..98) is masked in all three runs: the Enhanced run draws it, the rest of the frame (dashboard, menus) and
+the moments of the frames must stay the same (the simulation is unchanged).
 Exit code 0 only if every path is ok.
 """
 import argparse, hashlib, os, shutil, struct, subprocess, sys
@@ -27,20 +30,23 @@ PATHS = {
 }
 
 
-def bmp_320(data, n):
-    """Pixels of a bottom-up 24/32-bit BMP, every n-th pixel of every n-th row, as bytes (top row first)."""
+def bmp_320(data, n, mask=False):
+    """Pixels of a bottom-up 24/32-bit BMP, every n-th pixel of every n-th row, as bytes (top row first); with mask the
+    rows of the road view (18..98) are left out."""
     off, = struct.unpack_from("<I", data, 10)
     w, h, _, bpp = struct.unpack_from("<iiHH", data, 18)
     bpr, step = (w * bpp // 8 + 3) & ~3, bpp // 8
     rows = []
     n = max(1, abs(h) // 200)                   # the text mode (640x200) is never scaled
     for y in range(0, abs(h), n):
+        if mask and abs(h) // n == 200 and 18 <= y // n <= 98:
+            continue
         r = off + ((abs(h) - 1 - y) if h > 0 else y) * bpr
         rows.append(b"".join(data[r + x * step:r + x * step + 3] for x in range(0, w, n)))
     return b"".join(rows)
 
 
-def run(exe, extra, name, tag, n=1, env_extra=None, ordered=False):
+def run(exe, extra, name, tag, n=1, env_extra=None, ordered=False, mask=False):
     args, env_add, keys, secs = PATHS[name]
     base = os.path.join(ROOT, "work", "cc", name, tag)
     shutil.rmtree(base, ignore_errors=True)
@@ -57,7 +63,7 @@ def run(exe, extra, name, tag, n=1, env_extra=None, ordered=False):
     for f in sorted(os.listdir(snap)):
         if f.endswith(".bmp"):
             with open(os.path.join(snap, f), "rb") as fh:
-                h = hashlib.sha1(bmp_320(fh.read(), n)).hexdigest()
+                h = hashlib.sha1(bmp_320(fh.read(), n, mask)).hexdigest()
             frames.setdefault(h, f)
             seq.append(h)
     return seq if ordered else frames
@@ -66,9 +72,9 @@ def run(exe, extra, name, tag, n=1, env_extra=None, ordered=False):
 def check_clock(a, name):
     """SR_ENH_COMPARE=1: classic, classic again and the scaled Enhanced run give one frame sequence."""
     env = {"SR_ENH_COMPARE": "1"}
-    runs = [run(a.enhanced, ["--classic"], name, "clock_c1", 1, env, True),
-            run(a.enhanced, ["--classic"], name, "clock_c2", 1, env, True),
-            run(a.enhanced, ["--res-scale", "4"], name, "clock_e4", 4, env, True)]
+    runs = [run(a.enhanced, ["--classic"], name, "clock_c1", 1, env, True, True),
+            run(a.enhanced, ["--classic"], name, "clock_c2", 1, env, True, True),
+            run(a.enhanced, ["--res-scale", "4"], name, "clock_e4", 4, env, True, True)]
     n = min(len(r) for r in runs)
     same = [r[:n] == runs[0][:n] for r in runs]
     good = n > 0 and all(same)
@@ -100,7 +106,7 @@ def main():
               % (name, "ok" if good else "FAIL", len(c), len(missing),
                  (" (" + ", ".join(missing[:5]) + ")") if missing else "", len(f), len(set(f) & set(c))))
         if a.scaled:
-            e = run(a.enhanced, ["--res-scale", str(a.scaled)], name, "scaled", a.scaled)
+            e = run(a.enhanced, ["--res-scale", str(a.scaled), "--enh-modes", "none"], name, "scaled", a.scaled)
             missing = [e[h] for h in e if h not in f]
             ok &= bool(e) and not missing
             print("%-10s %-4s scaled x%d %d distinct frames, %d not in the faithful run%s"

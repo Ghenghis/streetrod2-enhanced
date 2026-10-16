@@ -2,7 +2,9 @@
  * and interpolation (§3.1).
  * S2.1: the host and coverage foundation. The output frame is the EGA picture scaled nearest-neighbour; the
  * enhanced view (later subtasks) is drawn by enh_compose where coverage allows.
- * S2.2: a snapshot per road_frame and the interpolated view at the display rate (nothing drawn yet; SR_ENH_TRACE). */
+ * S2.2: a snapshot per road_frame and the interpolated view at the display rate (SR_ENH_TRACE).
+ * S2.3: the enhanced view of the town and the street drag race (enh_road.c, enh_raster.c) laid over the scaled EGA
+ * picture where coverage allows; the compare tool (enh_compare.c). */
 #include "enhanced.h"
 #include "enh_internal.h"
 
@@ -69,6 +71,8 @@ int enh_parse_arg(const char *arg, const char *val)
 }
 
 static FILE *trace;         /* SR_ENH_TRACE=file ("-" = stderr): snapshots and interpolated frames (§5) */
+static struct { uint64_t n, sum, max; } rstat;  /* enhanced render time, per race (SR_ENH_TRACE) */
+static int compare;         /* SR_ENH_COMPARE: 1 = deterministic clock, >= 2 also the compare tool (§5) */
 
 void enh_init(void)
 {
@@ -82,6 +86,10 @@ void enh_init(void)
                            "front_s/v/drawn mirror_s/v/drawn page wall_hit\n"
                            "# C t_ms render_ms frame_a frame_b x w snap P rel_heading cam_x O opp_lat jerk us\n");
     }
+    const char *c = SDL_getenv("SR_ENH_COMPARE");
+    compare = c && *c ? atoi(c) : 0;
+    if (c && *c && !compare && strcmp(c, "0")) compare = 1;            /* as host.c: any other value = the clock */
+    if (compare >= 2) enh_compare_init(compare);
 }
 
 bool enh_hires(void) { return !enh.classic; }
@@ -95,7 +103,7 @@ bool enh_hires(void) { return !enh.classic; }
 static struct {
     bool overlay;           /* a race of an enabled mode is running */
     bool bg;                /* inside a race frame, background layer */
-    bool draws_view;        /* the enhanced view is drawn over the EGA picture (none yet: S2.1) */
+    bool draws_view;        /* the enhanced view is drawn over the EGA picture (S2.3: road modes 0 and 1) */
     int shown_page;         /* page (1, 2) presented by road_page_flip with a frame, 0 = none */
     u8 written[2][PAGE_BYTES];  /* per race page: bit set = the original's pixel shows (§2.1) */
 } rs;
@@ -353,6 +361,7 @@ void enh_race_begin(int road_mode)
 {
     if (enh.classic) return;
     rs.overlay = (enh.modes & mode_bit(road_mode)) != 0;
+    rs.draws_view = rs.overlay && (road_mode == 0 || road_mode == 1);     /* S2.3: town, street drag race */
     rs.bg = false;
     rs.shown_page = 0;
     memset(rs.written, 0xFF, sizeof rs.written);
@@ -364,8 +373,14 @@ void enh_race_begin(int road_mode)
 
 void enh_race_end(void)
 {
+    if (rs.overlay) enh_compare_race_end();
+    if (trace && rstat.n)
+        fprintf(trace, "# render %llu frames, mean %.3f ms, max %.3f ms (%dx%d, aa %d)\n", (unsigned long long)rstat.n,
+                rstat.sum / 1e6 / rstat.n, rstat.max / 1e6, 320 * enh.res_scale, 200 * enh.res_scale, enh.aa);
+    memset(&rstat, 0, sizeof rstat);
     if (trace) fflush(trace);
     rs.overlay = false;
+    rs.draws_view = false;
     rs.bg = false;
     rs.shown_page = 0;
     enh.track = false;
@@ -376,6 +391,7 @@ void enh_frame_begin(void)
     if (!rs.overlay) return;
     rs.bg = true;
     if (trace && ring.n) trace_snap(snap_at(0));           /* the previous frame, now complete */
+    if (!ring.n && rs.draws_view) enh_sky_capture();        /* road_load_graphics has stored the sky in page 1 */
     snap_take();
 }
 
@@ -400,6 +416,7 @@ void enh_frame_presented(int page)
     if (!rs.overlay) return;
     rs.shown_page = (page == 1 || page == 2) ? page : 0;
     if (ring.n) snap_at(0)->page = (s8)rs.shown_page;
+    if (compare >= 2 && rs.draws_view && ring.n) enh_compare_frame(snap_at(0), rs.shown_page);
 }
 
 /* ---------------------------------------------------------------- written mask (§2.1) */
@@ -436,14 +453,25 @@ bool enh_written(int page, int x, int y)
 /* ---------------------------------------------------------------- compose */
 
 static u32 pic[320 * 200];
+static u8 cover[(ENH_SPLIT_Y - ENH_VIEW_Y0) * 320];
+
+/* The logical pixels of the view that show the enhanced picture (§2.1): above the split, outside the mirror (the
+ * original's until S2.6), not last written by the foreground on the shown page. */
+static void cover_build(int page)
+{
+    for (int y = ENH_VIEW_Y0; y < ENH_SPLIT_Y; y++)
+        for (int x = 0; x < 320; x++)
+            cover[(y - ENH_VIEW_Y0) * 320 + x] = !enh_mirror_px(x, y) && !enh_written(page, x, y);
+}
 
 bool enh_compose(bool (*ega_compose)(u32 *xrgb), u32 *out)
 {
     bool changed = ega_compose(pic);
-    /* The view at the display rate. Until it is drawn the host calls compose on every pump (nothing presented):
+    /* The view at the display rate. Without a drawn view the host calls compose on every pump (nothing presented):
      * evaluate at most every 8 ms, the host's present gate, so the trace shows the display cadence. */
     static uint64_t last_eval;
     uint64_t now = host_clock_ns();
+    bool live = rs.overlay && rs.draws_view && ring.n && rs.shown_page;
     if (rs.overlay && ring.n && (rs.draws_view || now - last_eval >= 8000000u)) {
         uint64_t c0 = SDL_GetTicksNS();
         last_eval = now;
@@ -451,8 +479,9 @@ bool enh_compose(bool (*ega_compose)(u32 *xrgb), u32 *out)
         if (trace) trace_view(now, &view, (double)(SDL_GetTicksNS() - c0) / 1e3);
     }
     /* While the enhanced view is drawn it changes on every call: the host then presents at the display rate (§2).
-     * Until a subtask draws the view (S2.3) the output is the scaled EGA picture and changes with it only. */
-    if (!changed && !(rs.overlay && rs.draws_view)) return false;
+     * With the compare clock it presents only when the EGA picture changes, so snapshot runs of --classic and of the
+     * Enhanced graphics present at the same moments (tools/classic_check.py --clock). */
+    if (!changed && !(live && !compare)) return false;
     int n = enh.res_scale, w = 320 * n;
     for (int y = 0; y < 200; y++) {
         u32 *row = out + (size_t)y * n * w;
@@ -461,6 +490,17 @@ bool enh_compose(bool (*ega_compose)(u32 *xrgb), u32 *out)
             for (int k = 0; k < n; k++) *row++ = src[x];
         row -= w;
         for (int k = 1; k < n; k++) memcpy(row + (size_t)k * w, row, (size_t)w * sizeof *row);
+    }
+    if (live) {
+        uint64_t c0 = SDL_GetTicksNS();
+        if (enh_road_render(&view)) {
+            cover_build(rs.shown_page);
+            ras_resolve(view.b->pal, cover, out, n, enh.aa);
+            uint64_t dt = SDL_GetTicksNS() - c0;                /* render time per displayed frame (§3.10) */
+            rstat.n++;
+            rstat.sum += dt;
+            if (dt > rstat.max) rstat.max = dt;
+        }
     }
     return true;
 }

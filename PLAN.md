@@ -16,6 +16,7 @@ remove it when it is done.
 | Task | What to do | For | Time |
 |---|---|---|---|
 | U1 | S2.1: run `build\sr2-enhanced.exe` (Enhanced defaults, 1280x800 frame) next to `build\sr2-enhanced.exe --classic`: menus, garage, one race. The picture must look the same in both, the mouse pointer must follow the mouse in menus and the garage, Alt+Enter full screen fine | S2.1 | 10 min |
+| U1 | S2.3 (Milestone A): run `build\sr2-enhanced.exe` next to `build\sr2-enhanced.exe --classic`; drive in town (cruise to Burger's) and race a street drag race. In Enhanced the road, kerbs, sidewalks, building walls and sky must be sharp (no stair steps) and move smoothly between the game's frames, at the same place as in classic; the sky turns slower when steering (1/8). Signs, shapes, the opponent and the mirror are still the original's pixels (later subtasks). Report anything misplaced, flickering or popping | S2.3 | 15 min |
 | U3 | Decisions (defaults apply if unanswered), see U3 below | plan | 5 min |
 | U2 | The faithful playtests (U6 in `../StreetRod2/PLAN.md`) are still open. Bugs found there are fixed in the faithful repo first (S5.6) and ported here by hand | engine | - |
 
@@ -23,8 +24,9 @@ remove it when it is done.
 
 - **Done:** S0.1 (repo from the faithful port v0.1.0, created while the faithful playtests were still open),
   S1.1 (render back-end design: `ENHANCED.md`), S2.1 (host and coverage foundation; U1 check open),
-  S2.2 (snapshots, interpolation, `SR_ENH_TRACE`, compare clock).
-- **Next:** S2.3 (Opus, Milestone A: the first enhanced picture). Your tasks: **User to-do** above.
+  S2.2 (snapshots, interpolation, `SR_ENH_TRACE`, compare clock), S2.3 (Milestone A: enhanced town and street drag
+  race view, `SR_ENH_COMPARE`; its U1 check open).
+- **Next:** S2.4 (Sonnet: Mulholland and the drag strip). Your tasks: **User to-do** above (the S2.3 U1 check first).
 - Escalation rule: a subtask that fails twice on Sonnet → new Opus session with a 5-line note
   (symptom, file, what was tried). Never carry an old transcript over.
 
@@ -60,7 +62,7 @@ Design: `ENHANCED.md` (section numbers below). Stage 1 = S2.1-S2.8, stage 2 = S2
 |---|---|---|---|---|
 | S2.1 | Host and coverage (§2, §2.1, §6 step 1): output frame up to 2560×1600 with logical 320×200 kept for presentation and mouse, `enh_compose` in `ega.c`, written mask in `vga_wr`/`vmovedata`, background/foreground layers, race begin/end and frame hooks, options `--res-scale` `--aa` `--motion-delay` `--enh-modes`; picture = scaled EGA (no visible change); `--classic` identical | O | M | U1 pending |
 | S2.2 | Snapshots and interpolation (§3.1): snapshot ring at `road_frame`, `enh_opp_drawn`, `enh_frame_presented`, relative-heading blend, snaps; `SR_ENH_TRACE` and the deterministic compare clock (§5). Nothing drawn yet | O | M | done 2026-10-16 |
-| S2.3 | **Milestone A** (§3.2, §3.4, §3.5): float road geometry, raster with AA, resolve through the live palette, sky, for the town and the street drag race (modes 0, 1) at draw distance 14, sprites as passthrough; `SR_ENH_COMPARE`; U1 check | O | L | |
+| S2.3 | **Milestone A** (§3.2, §3.4, §3.5): float road geometry, raster with AA, resolve through the live palette, sky, for the town and the street drag race (modes 0, 1) at draw distance 14, sprites as passthrough; `SR_ENH_COMPARE`; U1 check | O | L | U1 pending |
 | S2.4 | Mulholland (banks `BL/BR`, hillsides, drop-offs, guard rails, trusses, own sky) and the drag strip (modes 2/4: `L2/R2/C2`, flat, barrier walls) (§3.2) | S | M | |
 | S2.5 | Sprites (§3.6): SR2_SHP format-A shapes at continuous scale, signs, banners, opponent and police from native LIB3 pictures, start tree and starter; remove every passthrough | S | L | |
 | S2.6 | Mirror (§3.7) and the town cruise check (§3.8) | S | M | |
@@ -85,6 +87,20 @@ Notes:
   `host_pump`, no sleeps (`host_clock_ns`, `host_tick_ns`); `python tools/classic_check.py --clock` checks that two classic
   runs and an Enhanced run give the same frame sequence. Demo drag race: 9.1 snapshots/s (109.9 ms), lag 110 ms, steady
   |jerk| <= 6 sub-steps/s at ~550 sub-steps/s (the hard stop and the cam_x snap at the finish excepted), < 30 us per call.
+- S2.3: `enh_road.c` (float geometry: segments seg+1..seg+14, the last stretched to z = 116 as the original's row 14,
+  cut into up to 8 slices; town walls, tall parts and their screen-space end faces, bands, dashes from the DS:7E52 table;
+  sky and panorama from page 1 rows 0x66.., scroll 1/8, horizon from HGT(P - 96)), `enh_raster.c` (index samples at
+  res_scale x aa, convex fill, linear-light resolve through the snapshot palette), compose overlays the view rows
+  18..98 outside the mirror where the written mask allows. Passthrough brackets (`enh_layer_fg/bg`) around
+  `front_objects` and the two front `opponent_draw` calls in `road_draw_front`; the mirror rectangle stays the
+  original's by geometry until S2.6. Modes 0 and 1 only (`rs.draws_view`); other modes unchanged.
+  `SR_ENH_COMPARE=2` (`enh_compare.c`): per race frame the snapshot at motion delay 0 with quantized depth, centre sample
+  per pixel, passthrough pixels laid over, colour edges matched within +-1 px both ways; `=3` lists misses and the row
+  tables, `SR_ENH_COMPARE_DIR` dumps. `python tools/enh_compare.py` (threshold 96 %): drag 99.8/99.9 % (h), 99.7/99.9 % (v),
+  town 98.9/99.1 % (h), 97.1/98.6 % (v). The float rows equal the original's row values (rows 1..14); the town's misses
+  are the original's 1/16-px slope drift on long near bands and +-1 row tops against the textured rooftop panorama.
+  Render 4.5-5 ms per displayed frame at 1280x800 2x2 (headless). `classic_check.py --scaled` now runs `--enh-modes none`,
+  `--clock` masks the view rows; both, `--classic --check` and the faithful `sr2_smoke.py` (15 paths) pass.
 
 ### Phase 3 - Input and settings
 | Id | Task | Model | Size | Status |
