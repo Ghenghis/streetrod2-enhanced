@@ -17,7 +17,7 @@ remove it when it is done.
 |---|---|---|---|
 | U1 | S2.1: run `build\sr2-enhanced.exe` (Enhanced defaults, 1280x800 frame) next to `build\sr2-enhanced.exe --classic`: menus, garage, one race. The picture must look the same in both, the mouse pointer must follow the mouse in menus and the garage, Alt+Enter full screen fine | S2.1 | 10 min |
 | U1 | S2.3 + S2.5 + S2.6 (town and street drag race): run `build\sr2-enhanced.exe` next to `build\sr2-enhanced.exe --classic`; drive in town (cruise to Burger's) and race a street drag race. In Enhanced the road, kerbs, sidewalks, building walls and sky must be sharp (no stair steps) and move smoothly between the game's frames, at the same place as in classic; the sky turns slower when steering (1/8). **Objects** (trees, lamp posts, road signs, hydrants, location signs, billboards, banners): since your S2.5 feedback each is drawn from its largest picture only and scaled by true perspective, so look that they **grow smoothly and slowly** as you approach, with **no size steps** (no LOD changes), the same size as classic when near (rows where classic shows its biggest picture), smaller than classic's jumps would suggest in the middle distance, and that they now appear at the far end of the road (fading in) instead of popping in halfway; trees stand behind the buildings. **Mirror**: now drawn by Enhanced too: sharp road, walls, trees and banners in it, the same view as classic, moving smoothly, frame lines crisp; the opponent / police car and the starter in the mirror are still classic pixels (later subtask). Report anything misplaced, flickering, popping or too big | S2.3, S2.5, S2.6 | 15 min |
-| U1 | S2.9 part 1 (draw distance x1.25, town and street drag race): run `build\sr2-enhanced.exe` (default 1.25) next to `build\sr2-enhanced.exe --draw-distance-scale 1` (the original distance) and `--classic`. Look at: the road, walls and kerbs now reach about 25 % further (17.5 instead of 14 segments) with **no popping at the far edge** (objects fade in over the last segment, nothing appears suddenly), **no road over the sky** (the far road ends just below the horizon panorama / the town's rooftop panorama, also when the car bounces; only crests may rise above it), objects stand on the road's far part and never float beyond its end; **town ends sane** (cruise to Burger's: the street ahead shows only town blocks, no race road); **drag race after the finish**: past the finish line plain flat straight road with centre dashes, no trees / signs / curves, no jump when crossing the line or while the car rolls to a stop. The mirror is unchanged | S2.9 | 10 min |
+| U1 | S2.9 part 1 (draw distance x1.25, town and street drag race): run `build\sr2-enhanced.exe` (default 1.25) next to `build\sr2-enhanced.exe --draw-distance-scale 1` (the original distance) and `--classic`. Look at: the road, walls and kerbs now reach about 25 % further (17.5 instead of 14 segments) with **no popping at the far edge** (objects fade in over the last segment, nothing appears suddenly), **no road over the sky** (the far road ends just below the horizon panorama / the town's rooftop panorama, also when the car bounces; only crests may rise above it), objects stand on the road's far part and never float beyond its end; **town ends sane** (cruise to Burger's: the street ahead shows only town blocks, no race road); **drag race after the finish** (fixed after your playtest of f1d3127): past the finish line plain road with centre dashes and no trees / signs, now following the course's hill exactly as the original does, so an **opponent waiting past the finish stands on the road** (not in the air); and **after the race stops** (the last second before the result boxes, and behind the boxes) the picture stays the enhanced one: **no revert to the old low-res road / hill**; the boxes themselves are classic pixels. Also check the end of a town cruise (arrival) the same way. The mirror is unchanged | S2.9 | 10 min |
 | U3 | Decisions (defaults apply if unanswered), see U3 below | plan | 5 min |
 | U2 | The faithful playtests (U6 in `../StreetRod2/PLAN.md`) are still open. Bugs found there are fixed in the faithful repo first (S5.6) and ported here by hand | engine | - |
 
@@ -149,8 +149,9 @@ Notes:
   (the compare view keeps the original's stretch of its last row to the far end), objects out to the far end, fading
   in over its last segment (dithered `ras_alpha`, as before). Table ends (§4 item 2), live view only: past the street
   drag race's finish (segments >= track_end 0x17C, the road course in the table) plain road (only the course's
-  centre-dash bit kept), no objects, YAW / HGT held from the finish boundary (or the car once past it: straight on at
-  the car's heading, continuous); the town is clamped at its last segment 0xB3 (never reached at 1.25: Burger's at
+  centre-dash bit kept), no objects; YAW / HGT stay the table's (the f1d3127 hold of the finish values made the road
+  flat while the original, whose opponent pixels show, places the waiting opponent on the course's hill: the car hung
+  in the air; fixed 2026-10-16); the town is clamped at its last segment 0xB3 (never reached at 1.25: Burger's at
   seg 0x9B sees to 0xAC; up to scale 1.7); the town's road surface is clipped to rows >= 63 (the rooftop panorama's
   base, its fill there is the road colour) so the far road never covers the panorama (§4 item 6); the drag race's far
   road at z 144 lies 1.6 px below the horizon row (flat road reaches the horizon only beyond z ~ 340, scale 3).
@@ -162,6 +163,17 @@ Notes:
   1 back to back (the machine was loaded: S2.6 measured 7.2 ms). Identity: `--classic --check`, classic_check plain
   and `--clock` ok; `--scaled 4` race_drag failed in 2 of 3 runs (once the classic run itself diverged from the
   faithful one: wall-clock timing under load; that run uses `--enh-modes none`), ok in the last; faithful smoke 15/15.
+  Fix 2026-10-16 (user playtest of f1d3127: "in the last second it reverts to a hill drawn with the old low-res
+  lines"): the revert was the 2 s after `race_run` ends: it copies the shown race page to page 0 and the back page,
+  shows page 0 (result boxes follow), and `enh_race_end` had switched the overlay off, so the original's picture
+  showed. Now `enh_race_end` starts a hold (`enhanced.c` `hold_start` / `hold_follow`): the last rendered raster
+  (nothing re-rendered, the race data is gone) stays over the displayed page, live palette, where its pixels still
+  equal the race picture's and were enhanced at the end; writes after the race show the original (boxes); the hold
+  follows a page switch by content and ends when more than half of the view is drawn over, the display leaves the
+  pages, or the next race begins. Engine hook: `ega_get_start` (ENH:). Headless (SR_ENH_TRACE `# hold` lines): drag
+  race end hold on page 1, followed to page 0 with all 20355 enhanced view pixels, kept through screens 23 / 6 to the
+  drive home; cruise arrival the same (21864). Checks: enh_compare.py unchanged (all ok); `--classic --check`, classic_check `--clock`, `--scaled 4` ok, plain race_drag
+  once 1 frame short (end timing), ok on rerun; faithful smoke 15/15.
   Remaining for S2.9: `--draw-distance N` up to 120 (generalise the factor; fewer slices far away, horizon clip for
   far road), the other modes' table ends (Mulholland past 0x3DD, drag strip past 0x58, Aqueduct past 0x156) once
   S2.4 draws them, the town end beyond scale 1.7 (a closing view instead of the clamp), opponent and police at

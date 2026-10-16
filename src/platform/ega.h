@@ -22,6 +22,7 @@ void ega_show(void);                         /* makes the planes the displayed f
 u8  *ega_plane(int plane);                   /* plane 0..3, EGA_PLANE_SIZE bytes (vga.c, compose) */
 
 void ega_set_start(u16 offset);              /* CRTC start address (bytes) */
+u16  ega_get_start(void);                     /* ENH: the displayed page (the enhanced view's hold after a race) */
 void ega_set_line_compare(int line);         /* first screen row (0..199) shown from offset 0; >= 200 = off */
 void ega_touch(void);                        /* marks the screen changed (after writes to the planes) */
 

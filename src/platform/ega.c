@@ -63,6 +63,8 @@ void ega_init(void)
 
 u8 *ega_plane(int plane) { return planes[plane & 3]; }
 
+u16 ega_get_start(void) { return start_addr; }                                  /* ENH: */
+
 void ega_set_start(u16 offset)
 {
     if (offset != start_addr) { start_addr = offset; dirty = true; }

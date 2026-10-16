@@ -48,23 +48,19 @@ typedef struct {
     bool mirror;                /* the mirror's projection (proj_x / proj_y) */
     double far_z;               /* the front's far end: 4 + 112 x --draw-distance-scale (z = 116 at 1) */
     int rows;                   /* enh_view.rows (compare aid) */
-    /* stage 2 table ends (ENHANCED.md §4 item 2), live view only: segments from `synth` on are plain road (no objects),
-     * YAW / HGT held beyond position `hold` */
+    /* stage 2 table ends (ENHANCED.md §4 item 2), live view only: segments from `synth` on are plain road (no objects) */
     int synth;
-    double hold;
 } cam;
 
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
 static u16 flag(u16 arr, int s) { return TRKW(arr, clampi(s, 0, TRK_N - 1)); }
 
 /* The front view's track: past the street drag race's finish the table holds the road course (curves, hills, its
- * objects); the live view shows plain flat road there instead: from segment `synth` (track_end) on only the centre
- * dashes (C & 8, the course's dash pattern) are kept, and beyond the finish boundary (or the car, once past it) YAW / HGT
- * hold their value, so the road runs straight on at the car's heading. The compare view and the mirror read the table
- * as the original. */
+ * objects); the live view shows plain road there: from segment `synth` (track_end) on only the centre dashes (C & 8,
+ * the course's dash pattern) are kept. YAW / HGT stay the table's (the course's first hill): the original places the
+ * opponent waiting past the finish (its pixels, passthrough) at those heights, so car and road agree. The compare view
+ * and the mirror read the table as the original. */
 static u16 cflag(const cam *c, u16 arr, int s) { return s < c->synth ? flag(arr, s) : arr == TRK_C ? flag(TRK_C, s) & 8 : 0; }
-static double yaw_at(const cam *c, double Pw) { return enh_track_yaw(fmin(Pw, c->hold)); }
-static double hgt_at(const cam *c, double Pw) { return enh_track_hgt(fmin(Pw, c->hold)); }
 
 /* ---------------------------------------------------------------- mirror projection (road_project_mirror) */
 
@@ -89,7 +85,7 @@ static double proj_x(const cam *c, double Pw, double xw)
 {
     if (c->mirror) return 280.0 + mir_dx(c, Pw) / 4.0 - (c->cx - xw) / mir_z(c, Pw) + XOFF;
     double z = (Pw - c->P) / 8.0 + 4.0;
-    double dx = c->heading - yaw_at(c, Pw);
+    double dx = c->heading - enh_track_yaw(Pw);
     return 160.0 + dx - 4.0 * (c->cx - xw) / z + XOFF;
 }
 
@@ -97,7 +93,7 @@ static double proj_y(const cam *c, double Pw, double yw)
 {
     if (c->mirror) return 36.0 + mir_dy(c, Pw) + (yw - c->cy) / mir_z(c, Pw) + YOFF;
     double z = (Pw - c->P) / 8.0 + 4.0;
-    double dy = (c->mode & 6) ? 0.0 : c->hgt - hgt_at(c, Pw);
+    double dy = (c->mode & 6) ? 0.0 : c->hgt - enh_track_hgt(Pw);
     return 2.0 * dy + 4.0 * (yw - c->cy) / z + c->bounce + 60.0 + YOFF;
 }
 
@@ -230,7 +226,7 @@ static void band(const cam *c, int s, int kband, const sect *p, int n)
  * object crossing it does not jump. */
 static double est_x(const cam *c, double Pw, double xw)
 {
-    double z = (Pw - c->P) / 8.0 + 4.0, dx = c->heading - yaw_at(c, Pw);
+    double z = (Pw - c->P) / 8.0 + 4.0, dx = c->heading - enh_track_yaw(Pw);
     if (c->compare) return road_proj_x((s16)lround(z), (s16)lround(xw), (s16)(int)lround(dx));
     double u = 4.0 * (c->cx - xw) / z - dx;
     return 160.0 - u + 0.5 * fmin(fmax(u / 2.0, -1.0), 1.0);
@@ -238,7 +234,7 @@ static double est_x(const cam *c, double Pw, double xw)
 
 static double est_y(const cam *c, double Pw, double yw)
 {
-    double z = (Pw - c->P) / 8.0 + 4.0, dy = (c->mode & 6) ? 0.0 : c->hgt - hgt_at(c, Pw);
+    double z = (Pw - c->P) / 8.0 + 4.0, dy = (c->mode & 6) ? 0.0 : c->hgt - enh_track_hgt(Pw);
     if (c->compare) return road_proj_y((s16)lround(z), (s16)lround(yw), (s16)(int)lround(dy));
     double v = 2.0 * dy + 4.0 * (yw - c->cy) / z;
     return v - 0.5 * fmin(fmax(v / 2.0, -1.0), 1.0) + c->bounce + 60.0;
@@ -519,7 +515,6 @@ static void mirror(const cam *c0)
     cam c = *c0;
     c.mirror = true;
     c.synth = INT_MAX;          /* the mirror reads the table as the original (no table end behind the car) */
-    c.hold = INFINITY;
     /* mirror_draw_backdrop: the frame (rows 20..44) and its mount (rows 18, 19), then the horizon strip of the sky
      * picture above the far row, inside the mirror's clip */
     mir_pic(232, 104, 80, 25, 240, 20);
@@ -560,11 +555,10 @@ static cam cam_of(const enh_view *v)
         .P = v->P, .cx = v->cam_x, .cy = v->cam_y, .hgt = v->cur_height, .heading = v->heading,
         .bounce = v->bounce_y, .mode = b->mode, .seg0 = (int)floor(v->P / 64.0), .racing = b->racing != 0,
         .compare = v->compare, .start_seg = b->start_seg, .w = b->mode == 0x10 ? 200 : 400,
-        .far_z = 4.0 + (FAR_Z - 4.0) * enh.draw_scale, .rows = v->rows, .synth = INT_MAX, .hold = INFINITY,
+        .far_z = 4.0 + (FAR_Z - 4.0) * enh.draw_scale, .rows = v->rows, .synth = INT_MAX,
     };
     if (c.racing && !c.compare && b->track_end > 0) {          /* modes 0, 1: the finish at track_end 0x17C */
         c.synth = b->track_end;
-        c.hold = fmax((b->track_end - 1) * 64.0, c.P);
     }
     return c;
 }

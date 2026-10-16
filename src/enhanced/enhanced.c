@@ -120,6 +120,18 @@ static struct {
     bool in_objects;        /* inside front_objects (enh_objects_begin .. end) or the mirror's objects */
     bool in_mirror;         /* inside the mirror's objects (enh_mirror_objects_begin .. end) */
     int shown_page;         /* page (1, 2) presented by road_page_flip with a frame, 0 = none */
+    /* After the race (enh_race_end) the last rendered view (the raster's samples: nothing is rendered again, the
+     * race's data is gone) stays over the race picture while it is displayed: race_run copies the shown race page to
+     * page 0 and the back page and shows page 0, then the finish's message boxes and the pause before the results
+     * follow. The hold follows the displayed page (hold_off): when it changes, the new page's pixels that still equal
+     * the race picture (hold_px) and were the enhanced view's at the race end (hold_fg0) show the hold, and later
+     * writes to that page take their pixels over (hold_mask, bit set = the original's pixel shows). It ends when no
+     * view pixel is left or the display leaves the three pages. */
+    bool hold, rendered;
+    u16 hold_off;
+    unsigned hold_n0;       /* view pixels of the hold at the race end */
+    u8 hold_mask[PAGE_BYTES], hold_fg0[PAGE_BYTES];
+    u8 hold_px[ENH_SPLIT_Y - ENH_VIEW_Y0][320];
     u8 written[2][PAGE_BYTES];  /* per race page: bit set = the original's pixel shows (§2.1) */
 } rs;
 
@@ -376,6 +388,7 @@ void enh_race_begin(int road_mode)
 {
     if (enh.classic) return;
     rs.overlay = (enh.modes & mode_bit(road_mode)) != 0;
+    rs.hold = rs.rendered = false;
     rs.draws_view = rs.overlay && (road_mode == 0 || road_mode == 1);     /* S2.3: town, street drag race */
     rs.draws_objects = rs.draws_view;                                       /* S2.5: the same modes */
     rs.in_objects = rs.in_mirror = false;
@@ -388,6 +401,48 @@ void enh_race_begin(int road_mode)
     if (trace && rs.overlay) fprintf(trace, "# race mode %d\n", road_mode);
 }
 
+static u8 page_px(u16 base, int x, int y)
+{
+    u16 o = (u16)(base + y * EGA_BYTES_PER_LINE + x / 8);
+    int b = 7 - x % 8;
+    return (u8)((ega_plane(0)[o] >> b & 1) | (ega_plane(1)[o] >> b & 1) << 1 | (ega_plane(2)[o] >> b & 1) << 2
+              | (ega_plane(3)[o] >> b & 1) << 3);
+}
+
+static void hold_start(int page)
+{
+    rs.hold_off = page == 1 ? PAGE1_OFF : PAGE2_OFF;
+    memcpy(rs.hold_fg0, rs.written[page - 1], PAGE_BYTES);
+    memcpy(rs.hold_mask, rs.hold_fg0, PAGE_BYTES);
+    for (int y = ENH_VIEW_Y0; y < ENH_SPLIT_Y; y++)
+        for (int x = 0; x < 320; x++) rs.hold_px[y - ENH_VIEW_Y0][x] = page_px(rs.hold_off, x, y);
+    rs.hold_n0 = 0;
+    for (int y = ENH_VIEW_Y0; y < ENH_SPLIT_Y; y++)
+        for (int x = 0; x < 320; x++) rs.hold_n0 += !(rs.hold_fg0[y * EGA_BYTES_PER_LINE + x / 8] >> (7 - x % 8) & 1);
+    if (trace) fprintf(trace, "# hold page %d t_ms %llu view pixels %u\n", page,
+                       (unsigned long long)(host_clock_ns() / 1000000), rs.hold_n0);
+}
+
+/* the displayed page changed during the hold: its mask from its pixels; false when the hold ends */
+static bool hold_follow(u16 start, uint64_t now)
+{
+    unsigned left = 0;
+    if (start == 0 || start == PAGE1_OFF || start == PAGE2_OFF) {
+        rs.hold_off = start;
+        memset(rs.hold_mask, 0xFF, PAGE_BYTES);
+        for (int y = ENH_VIEW_Y0; y < ENH_SPLIT_Y; y++)
+            for (int x = 0; x < 320; x++) {
+                int i = y * EGA_BYTES_PER_LINE + x / 8, bit = 7 - x % 8;
+                if (!(rs.hold_fg0[i] >> bit & 1) && page_px(start, x, y) == rs.hold_px[y - ENH_VIEW_Y0][x]) {
+                    rs.hold_mask[i] &= (u8)~(1 << bit);
+                    left++;
+                }
+            }
+    }
+    if (trace) fprintf(trace, "# hold start %04x t_ms %llu view pixels %u\n", start, (unsigned long long)(now / 1000000), left);
+    return left * 2 > rs.hold_n0;
+}
+
 void enh_race_end(void)
 {
     if (rs.overlay) enh_compare_race_end();
@@ -396,13 +451,15 @@ void enh_race_end(void)
                 rstat.sum / 1e6 / rstat.n, rstat.max / 1e6, 320 * enh.res_scale, 200 * enh.res_scale, enh.aa);
     memset(&rstat, 0, sizeof rstat);
     if (trace) fflush(trace);
+    rs.hold = rs.overlay && rs.draws_view && rs.rendered && rs.shown_page;
+    if (rs.hold) hold_start(rs.shown_page);
     rs.overlay = false;
     rs.draws_view = false;
     rs.draws_objects = false;
     rs.in_objects = false;
-    rs.bg = false;
+    rs.bg = false;                                          /* the hold: every later write is foreground */
     rs.shown_page = 0;
-    enh.track = false;
+    enh.track = rs.hold;
 }
 
 void enh_frame_begin(void)
@@ -485,6 +542,12 @@ u32 enh_vram_peek(u16 off)
 void enh_vram_write(u16 off, u32 before)
 {
     u8 *mask;
+    if (rs.hold) {                                          /* after the race: writes to the displayed page */
+        if (off < rs.hold_off || off >= rs.hold_off + PAGE_BYTES) return;
+        u32 d = before ^ enh_vram_peek(off);
+        rs.hold_mask[off - rs.hold_off] |= (u8)(d | d >> 8 | d >> 16 | d >> 24);
+        return;
+    }
     if (off >= PAGE1_OFF && off < PAGE1_OFF + PAGE_BYTES) mask = &rs.written[0][off - PAGE1_OFF];
     else if (off >= PAGE2_OFF && off < PAGE2_OFF + PAGE_BYTES) mask = &rs.written[1][off - PAGE2_OFF];
     else return;
@@ -516,7 +579,9 @@ static void cover_build(int page)
 {
     for (int y = ENH_VIEW_Y0; y < ENH_SPLIT_Y; y++)
         for (int x = 0; x < 320; x++)
-            cover[(y - ENH_VIEW_Y0) * 320 + x] = !enh_written(page, x, y);
+            cover[(y - ENH_VIEW_Y0) * 320 + x] = page ? !enh_written(page, x, y)
+                : !(rs.hold_mask[y * EGA_BYTES_PER_LINE + x / 8] >> (7 - x % 8) & 1)      /* the hold: and the pixel */
+                  && page_px(rs.hold_off, x, y) == rs.hold_px[y - ENH_VIEW_Y0][x];    /* still the race picture's */
 }
 
 bool enh_compose(bool (*ega_compose)(u32 *xrgb), u32 *out)
@@ -526,7 +591,12 @@ bool enh_compose(bool (*ega_compose)(u32 *xrgb), u32 *out)
      * evaluate at most every 8 ms, the host's present gate, so the trace shows the display cadence. */
     static uint64_t last_eval;
     uint64_t now = host_clock_ns();
-    bool live = rs.overlay && rs.draws_view && ring.n && rs.shown_page;
+    if (rs.hold && ega_get_start() != rs.hold_off && !hold_follow(ega_get_start(), now)) {
+        rs.hold = false;                                    /* the race picture is gone */
+        enh.track = false;
+        if (trace) fprintf(trace, "# hold end t_ms %llu\n", (unsigned long long)(now / 1000000));
+    }
+    bool live = (rs.overlay && rs.draws_view && ring.n && rs.shown_page) || rs.hold;
     if (rs.overlay && ring.n && (rs.draws_view || now - last_eval >= 8000000u)) {
         uint64_t c0 = SDL_GetTicksNS();
         last_eval = now;
@@ -536,7 +606,7 @@ bool enh_compose(bool (*ega_compose)(u32 *xrgb), u32 *out)
     /* While the enhanced view is drawn it changes on every call: the host then presents at the display rate (§2).
      * With the compare clock it presents only when the EGA picture changes, so snapshot runs of --classic and of the
      * Enhanced graphics present at the same moments (tools/classic_check.py --clock). */
-    if (!changed && !(live && !compare)) return false;
+    if (!changed && !(live && !rs.hold && !compare)) return false;    /* the hold's view is frozen */
     int n = enh.res_scale, w = 320 * n;
     for (int y = 0; y < 200; y++) {
         u32 *row = out + (size_t)y * n * w;
@@ -548,7 +618,21 @@ bool enh_compose(bool (*ega_compose)(u32 *xrgb), u32 *out)
     }
     if (live) {
         uint64_t c0 = SDL_GetTicksNS();
-        if (enh_road_render(&view)) {
+        if (rs.hold) {                                      /* the last view, the live palette (fades) */
+            u8 pal[17];
+            for (int i = 0; i < 17; i++) pal[i] = ega_get_palette_reg(i);
+            cover_build(0);
+            /* another picture drawn over the race's (more than half of it): the hold ends, so that its pixels that
+             * happen to have the race picture's colour do not show the old view */
+            unsigned left = 0;
+            for (size_t i = 0; i < sizeof cover; i++) left += cover[i];
+            if (left * 2 <= rs.hold_n0) {
+                rs.hold = false;
+                enh.track = false;
+                if (trace) fprintf(trace, "# hold end t_ms %llu view pixels %u\n", (unsigned long long)(now / 1000000), left);
+            } else ras_resolve(pal, cover, out, n, enh.aa);
+        } else if (enh_road_render(&view)) {
+            rs.rendered = true;
             cover_build(rs.shown_page);
             ras_resolve(view.b->pal, cover, out, n, enh.aa);
             uint64_t dt = SDL_GetTicksNS() - c0;                /* render time per displayed frame (§3.10) */
