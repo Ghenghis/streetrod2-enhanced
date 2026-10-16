@@ -104,6 +104,8 @@ static struct {
     bool overlay;           /* a race of an enabled mode is running */
     bool bg;                /* inside a race frame, background layer */
     bool draws_view;        /* the enhanced view is drawn over the EGA picture (S2.3: road modes 0 and 1) */
+    bool draws_objects;     /* the enhanced view draws the road-side objects (S2.5: road modes 0 and 1) */
+    bool in_objects;        /* inside front_objects (enh_objects_begin .. end) */
     int shown_page;         /* page (1, 2) presented by road_page_flip with a frame, 0 = none */
     u8 written[2][PAGE_BYTES];  /* per race page: bit set = the original's pixel shows (§2.1) */
 } rs;
@@ -362,6 +364,8 @@ void enh_race_begin(int road_mode)
     if (enh.classic) return;
     rs.overlay = (enh.modes & mode_bit(road_mode)) != 0;
     rs.draws_view = rs.overlay && (road_mode == 0 || road_mode == 1);     /* S2.3: town, street drag race */
+    rs.draws_objects = rs.draws_view;                                       /* S2.5: the same modes */
+    rs.in_objects = false;
     rs.bg = false;
     rs.shown_page = 0;
     memset(rs.written, 0xFF, sizeof rs.written);
@@ -381,6 +385,8 @@ void enh_race_end(void)
     if (trace) fflush(trace);
     rs.overlay = false;
     rs.draws_view = false;
+    rs.draws_objects = false;
+    rs.in_objects = false;
     rs.bg = false;
     rs.shown_page = 0;
     enh.track = false;
@@ -392,6 +398,7 @@ void enh_frame_begin(void)
     rs.bg = true;
     if (trace && ring.n) trace_snap(snap_at(0));           /* the previous frame, now complete */
     if (!ring.n && rs.draws_view) enh_sky_capture();        /* road_load_graphics has stored the sky in page 1 */
+    if (compare >= 2) enh_compare_objs_clear();
     snap_take();
 }
 
@@ -410,6 +417,27 @@ void enh_opp_drawn(int view_id, int s, int v, bool drawn)
     n->opp_drawn[view_id] = drawn;
 }
 void enh_layer_bg(void) { if (rs.overlay) rs.bg = true; }
+
+/* front_objects: drawn by the enhanced renderer (the original's pixels are background, the enhanced view owns them),
+ * or a passthrough bracket in the modes whose objects are not enhanced yet. */
+void enh_objects_begin(void)
+{
+    if (!rs.overlay) return;
+    if (rs.draws_objects) rs.in_objects = true;
+    else enh_layer_fg();
+}
+
+void enh_objects_end(void)
+{
+    if (!rs.overlay) return;
+    if (rs.draws_objects) rs.in_objects = false;
+    else enh_layer_bg();
+}
+
+void enh_obj_orig(int kind, int type, int x, int y, int depth, int side, int x2)
+{
+    if (compare >= 2 && rs.in_objects) enh_compare_obj(true, kind, type, depth, side, x, y, x2);
+}
 
 void enh_frame_presented(int page)
 {

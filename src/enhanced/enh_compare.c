@@ -10,11 +10,19 @@
  * Output (SR_ENH_COMPARE_LOG=file, default stderr), one line per frame and one per race:
  *   K frame mode seg substep  h orig_matched/orig_edges enh_matched/enh_edges  v ...
  *   K race frames N  h ... v ...  worst frame F pct
- * SR_ENH_COMPARE=3 also lists the unmatched edges of each frame (first 12). SR_ENH_COMPARE_DIR=dir writes every
+ * Road-side objects (S2.5): every call of scenery_draw_shape / _hydrant / _sign_picture / _banner in front_objects is
+ * recorded (enh_obj_orig) with its anchor, row depth, side and type, and so is every call the enhanced renderer makes
+ * for the compare view (enh_sprite.c, the original's LOD); a call is matched by one of the same kind, type, depth and
+ * side with the anchor (and a banner's right edge) within +-1 px. The size the enhanced renderer uses at the
+ * original's row depth with the continuous LOD is checked against the original's LOD: within half a LOD step + 0.5 px.
+ *   O frame orig_calls enh_calls orig_matched enh_matched size_ok/size_checks
+ *   O race frames N  calls orig_matched/orig enh_matched/enh  size ok/checks max err px
+ * SR_ENH_COMPARE=3 also lists the unmatched edges and object calls of each frame (first 12). SR_ENH_COMPARE_DIR=dir writes every
  * SR_ENH_COMPARE_EVERY-th (default 25) compared frame as cmpNNNNN.bmp: original, enhanced, difference. */
 #include "enh_internal.h"
 #include "enhanced.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -36,7 +44,56 @@ static struct {
     double worst;
     unsigned worst_frame;
     unsigned long miss_y[ROWS], miss_pair[16][16];  /* unmatched edges by row and colour pair (SR_ENH_COMPARE=3) */
+    unsigned long on, om, en, em, sn, sm;           /* object calls: original / matched, enhanced / matched; sizes */
+    unsigned long kinds[4];                         /* original calls by kind */
+    double smax;
 } cmp;
+
+/* ---------------------------------------------------------------- road-side object calls */
+
+#define OBJ_MAX 256
+typedef struct { int kind, type, depth, side; double x, y, x2; bool used; } obj_rec;
+static struct { obj_rec r[2][OBJ_MAX]; int n[2]; unsigned sn, sm; double smax; } objs;     /* [0] enhanced, [1] original */
+
+void enh_compare_obj(bool orig, int kind, int type, int depth, int side, double x, double y, double x2)
+{
+    int i = orig ? 1 : 0;
+    if (objs.n[i] >= OBJ_MAX) return;
+    objs.r[i][objs.n[i]++] = (obj_rec){ kind, type, depth, side, x, y, x2, false };
+}
+
+void enh_compare_size(double err, double tol)
+{
+    objs.sn++;
+    if (err <= tol) objs.sm++;
+    if (err > objs.smax) objs.smax = err;
+}
+
+void enh_compare_objs_clear(void) { objs.n[1] = 0; }
+
+static bool obj_same(const obj_rec *a, const obj_rec *b)
+{
+    return a->kind == b->kind && a->type == b->type && a->depth == b->depth && a->side == b->side
+        && fabs(a->x - b->x) <= 1.0 && fabs(a->y - b->y) <= 1.0 && fabs(a->x2 - b->x2) <= 1.0;
+}
+
+/* matches A's calls in B (each B call used once); returns the matched count */
+static unsigned obj_match(int a, int b, bool list)
+{
+    unsigned m = 0;
+    int shown = 0;
+    for (int j = 0; j < objs.n[b]; j++) objs.r[b][j].used = false;
+    for (int i = 0; i < objs.n[a]; i++) {
+        const obj_rec *p = &objs.r[a][i];
+        int j;
+        for (j = 0; j < objs.n[b]; j++)
+            if (!objs.r[b][j].used && obj_same(p, &objs.r[b][j])) { objs.r[b][j].used = true; m++; break; }
+        if (j == objs.n[b] && list && shown++ < 12)
+            fprintf(cmp.log, "  %s object kind %d type %d depth %d side %d at x %.1f y %.1f x2 %.1f unmatched\n",
+                    a ? "orig" : "enh", p->kind, p->type, p->depth, p->side, p->x, p->y, p->x2);
+    }
+    return m;
+}
 
 void enh_compare_init(int level)
 {
@@ -182,7 +239,10 @@ void enh_compare_frame(const enh_snap *s, int page)
     v.cur_height = s->cur_height;
     v.bounce_y = s->bounce_y;
     v.compare = true;
-    if (!enh_road_render(&v)) return;
+    objs.n[0] = 0;
+    objs.sn = objs.sm = 0;
+    objs.smax = 0;
+    if (!enh_road_render(&v)) { objs.n[1] = 0; return; }
     if (cmp.level >= 3) enh_road_debug_rows(&v, cmp.log);
     ras_downscale(&E[0][0]);
     for (int y = 0; y < ROWS; y++)
@@ -203,6 +263,12 @@ void enh_compare_frame(const enh_snap *s, int page)
     count(E, O, y0, 0, 1, &ven, &vem, list, "v enh");
     fprintf(cmp.log, "K %u %d %d %d  h %u/%u %u/%u  v %u/%u %u/%u\n", s->frame, s->mode, s->seg, s->substep,
             hm, hn, hem, hen, vm, vn, vem, ven);
+    unsigned om = obj_match(1, 0, list), em = obj_match(0, 1, list);
+    fprintf(cmp.log, "O %u %d %d %u %u %u/%u\n", s->frame, objs.n[1], objs.n[0], om, em, objs.sm, objs.sn);
+    cmp.on += objs.n[1]; cmp.om += om; cmp.en += objs.n[0]; cmp.em += em; cmp.sn += objs.sn; cmp.sm += objs.sm;
+    if (objs.smax > cmp.smax) cmp.smax = objs.smax;
+    for (int i = 0; i < objs.n[1]; i++) cmp.kinds[objs.r[1][i].kind & 3]++;
+    objs.n[1] = 0;
     cmp.hn += hn; cmp.hm += hm; cmp.hen += hen; cmp.hem += hem;
     cmp.vn += vn; cmp.vm += vm; cmp.ven += ven; cmp.vem += vem;
     unsigned tn = hn + hen + vn + ven, tm = hm + hem + vm + vem;
@@ -217,6 +283,8 @@ void enh_compare_race_end(void)
     if (cmp.level < 2 || !cmp.frames) return;
     fprintf(cmp.log, "K race frames %u  h %lu/%lu %lu/%lu  v %lu/%lu %lu/%lu  worst frame %u %.2f%%\n", cmp.frames,
             cmp.hm, cmp.hn, cmp.hem, cmp.hen, cmp.vm, cmp.vn, cmp.vem, cmp.ven, cmp.worst_frame, cmp.worst);
+    fprintf(cmp.log, "O race frames %u  calls %lu/%lu %lu/%lu  size %lu/%lu max err %.2f px  (shapes %lu hydrants %lu pictures %lu banners %lu)\n", cmp.frames, cmp.om,
+            cmp.on, cmp.em, cmp.en, cmp.sm, cmp.sn, cmp.smax, cmp.kinds[0], cmp.kinds[1], cmp.kinds[2], cmp.kinds[3]);
     if (cmp.level >= 3) {
         fprintf(cmp.log, "K unmatched by row:");
         for (int y = 0; y < ROWS; y++) if (cmp.miss_y[y]) fprintf(cmp.log, " %d:%lu", y + ENH_VIEW_Y0, cmp.miss_y[y]);

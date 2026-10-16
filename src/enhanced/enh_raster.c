@@ -51,6 +51,31 @@ void ras_rect(double x0, double y0, double x1, double y1, u8 c)
     for (int j = j0; j < j1; j++) span(j, x0 * S, x1 * S, c);
 }
 
+/* A w x h index picture stretched over [x0, x1) x [y0, y1) (logical coordinates), rows below `ymax` cut; nearest
+ * texel per sample (the caller picks a picture at most one size step larger than the target, so no mips are needed). */
+void ras_image(const u8 *px, int w, int h, double x0, double y0, double x1, double y1, double ymax)
+{
+    if (!rb.buf || w <= 0 || h <= 0 || x1 <= x0 || y1 <= y0) return;
+    double S = rb.S, sl = x0 * S, sr = x1 * S, st = (y0 - ENH_VIEW_Y0) * S, sb = (y1 - ENH_VIEW_Y0) * S;
+    double sm = (ymax - ENH_VIEW_Y0) * S;
+    int i0 = (int)ceil(sl - 0.5), i1 = (int)ceil(sr - 0.5), j0 = (int)ceil(st - 0.5), j1 = (int)ceil(fmin(sb, sm) - 0.5);
+    if (i0 < 0) i0 = 0;
+    if (i1 > rb.w) i1 = rb.w;
+    if (j0 < 0) j0 = 0;
+    if (j1 > rb.h) j1 = rb.h;
+    double du = w / (sr - sl), dv = h / (sb - st);
+    for (int j = j0; j < j1; j++) {
+        int v = (int)((j + 0.5 - st) * dv);
+        if (v < 0 || v >= h) continue;
+        const u8 *src = px + (size_t)v * w;
+        u8 *out = rb.buf + (size_t)j * rb.w;
+        for (int i = i0; i < i1; i++) {
+            int u = (int)((i + 0.5 - sl) * du);
+            if (u >= 0 && u < w) out[i] = src[u];
+        }
+    }
+}
+
 /* A convex polygon of n points (x, y pairs, logical coordinates); a non-convex one fills its rows' extents. */
 void ras_poly(const double *xy, int n, u8 c)
 {

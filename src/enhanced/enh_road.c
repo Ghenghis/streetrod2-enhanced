@@ -2,9 +2,9 @@
  * S2.3 (Milestone A): the town cruise and the street drag race (road modes 0, 1) at the original draw distance
  * (14 segments). The road is projected in float with the formulas of road_proj_x / road_proj_y (race_road.c) at the
  * interpolated view, each segment cut into slices so that YAW / HGT / edges vary continuously, and emitted far to
- * near in the original's painter's order (road_draw_front: town walls, then the band of each row). Sprites, banners,
- * shapes and the opponent are the original's pixels (passthrough brackets in road_draw_front); the mirror is the
- * original's until S2.6.
+ * near in the original's painter's order (road_draw_front: town walls, then the band of each row, then the row's
+ * road-side objects, enh_sprite.c, S2.5). The opponent is the original's pixels (passthrough brackets in
+ * road_draw_front); the mirror is the original's until S2.6.
  *
  * World: a position Pw along the road in sub-steps (64 per segment), lateral x and height y in road units (road
  * 0x5DC..0xCE4, surface y 2000, eye 0x76C). Depth z = (Pw - P) / 8 + 4, so segment seg + k lies at the original's row
@@ -180,6 +180,56 @@ static void band(const cam *c, int s, int kband, const sect *p, int n)
     }
 }
 
+/* ---------------------------------------------------------------- road-side objects (enh_sprite.c) */
+
+/* The original's integer row values at boundary Pw: road_proj_x / _y themselves when comparing (the snapshot's state is
+ * still in DGROUP then); otherwise the exact projection moved by half a pixel the way the original truncates (towards
+ * the screen centre in x, towards the eye level in y), blended linearly over the 2 px around the centre so that an
+ * object crossing it does not jump. */
+static double est_x(const cam *c, double Pw, double xw)
+{
+    double z = (Pw - c->P) / 8.0 + 4.0, dx = c->heading - enh_track_yaw(Pw);
+    if (c->compare) return road_proj_x((s16)lround(z), (s16)lround(xw), (s16)(int)lround(dx));
+    double u = 4.0 * (c->cx - xw) / z - dx;
+    return 160.0 - u + 0.5 * fmin(fmax(u / 2.0, -1.0), 1.0);
+}
+
+static double est_y(const cam *c, double Pw, double yw)
+{
+    double z = (Pw - c->P) / 8.0 + 4.0, dy = (c->mode & 6) ? 0.0 : c->hgt - enh_track_hgt(Pw);
+    if (c->compare) return road_proj_y((s16)lround(z), (s16)lround(yw), (s16)(int)lround(dy));
+    double v = 2.0 * dy + 4.0 * (yw - c->cy) / z;
+    return v - 0.5 * fmin(fmax(v / 2.0, -1.0), 1.0) + c->bounce + 60.0;
+}
+
+/* front_objects of segment s (row k = s - seg0 < 11) at its far boundary, the objects of `pass` */
+static void objects(const cam *c, int s, int pass)
+{
+    int k = s - c->seg0;
+    if (k < 1 || k > 10) return;
+    double Pw = s * 64.0, l, r;
+    edges_at(s, &l, &r);
+    enh_bound b = { .s = s, .k = k };
+    b.z = (Pw - c->P) / 8.0 + 4.0;
+    b.rc = c->compare ? k : (b.z - 4.0) / 8.0 + 7.0 / 16.0;            /* row k spans q = 7..0: centred */
+    b.xl = est_x(c, Pw, l);
+    b.xr = est_x(c, Pw, r);
+    b.xol = est_x(c, Pw, 0x5DC - c->w);
+    b.xor_ = est_x(c, Pw, 0xCE4 + c->w);
+    b.xfl = est_x(c, Pw, (c->w - 0x177) * -4);
+    b.xfr = est_x(c, Pw, (c->w + 0x339) * 4);
+    b.y = est_y(c, Pw, SURFACE);
+    b.ye = est_y(c, Pw, EYE);
+    b.y16 = c->compare ? 4 * b.ye - 3 * b.y : est_y(c, Pw, 1600.0);
+    double Pq = fmax((s - 1) * 64.0, c->P), yq = est_y(c, Pq, SURFACE);    /* row k - 1 (row 0 at z = 4) */
+    int sq = clampi(s - 1, 0, TRK_N - 1);
+    double ybl = est_y(c, Pq, SURFACE - TRKS(TRK_BL, sq)), ybr = est_y(c, Pq, SURFACE - TRKS(TRK_BR, sq));
+    b.flat_l = c->compare ? ybl == yq : fabs(ybl - yq) < 0.5;
+    b.flat_r = c->compare ? ybr == yq : fabs(ybr - yq) < 0.5;
+    b.dash = dash_width(c, k, Pw);
+    enh_objects(&b, c->mode, c->compare, pass);
+}
+
 /* One segment s (band kband of the original) between Pa (near) and Pb (far), in slices. */
 static void segment(const cam *c, int s, int kband, double Pa, double Pb)
 {
@@ -187,11 +237,16 @@ static void segment(const cam *c, int s, int kband, double Pa, double Pb)
     double ya = proj_y(c, Pa, SURFACE), yb = proj_y(c, Pb, SURFACE);
     int n = clampi((int)ceil(fabs(ya - yb) / 2.0), 1, 8);
     for (int i = 0; i <= n; i++) p[i] = section(c, Pa + (Pb - Pa) * i / n);
+    /* the objects behind the building line go behind the segment's walls (enh_sprite.c); comparing: the original's
+     * order, all objects after the band */
+    bool split = !c->racing && !c->compare;
+    if (split) objects(c, s, ENH_OBJ_OUT);
     if (!c->racing) {
         town_walls(c, s, p, n, true);
         town_walls(c, s, p, n, false);
     }
     band(c, s, kband, p, n);
+    objects(c, s, split ? ENH_OBJ_IN : ENH_OBJ_ALL);
 }
 
 static void road(const cam *c)

@@ -226,6 +226,11 @@ the sky racing across the screen when steering and slowed it to 1/8; use `SKY_SC
   SRE). Mode 2 draws no opponent (as the original).
 * Mip levels for downscaling from the most frequent pattern, not by averaging indices (TD2E `build_mips`).
 * Order of porting = order of passthrough removal: shapes → signs and banners → opponent and police → start props.
+* Done for modes 0 and 1 (S2.5 part 1, `enh_sprite.c`): `front_objects` re-made from the track flags at the view;
+  sizes interpolated between the original's LOD sizes at its row depths; in the town the objects behind the building
+  line (XOL / XOR and beyond) are drawn before their segment's walls, which the original paints them over (the
+  original draws a row's objects after its walls). Hooks: `enh_objects_begin/end` around `front_objects` (a
+  passthrough bracket in the modes not done yet), `enh_obj_orig` in `scenery_draw_*` (compare records).
 
 ### 3.7 Mirror
 

@@ -833,6 +833,7 @@ void shape_draw_dot(s16 x, s16 y)
 /* 0dcb:5158 scenery_draw_shape */
 void scenery_draw_shape(s16 x, s16 y, s16 depth, s16 side, s16 type, s16 noclamp)
 {
+    enh_obj_orig(0, type, x, (noclamp == 0 && y > 0x65) ? 0x65 : y, depth, side, 0);   /* ENH: compare record */
     s16 lod = sub16(9, depth);
     if (lod > 6) lod = 6;
     if (lod < 0) lod = 0;
@@ -843,6 +844,7 @@ void scenery_draw_shape(s16 x, s16 y, s16 depth, s16 side, s16 type, s16 noclamp
 /* 0dcb:51aa scenery_draw_hydrant (set 2, 8 LODs, no y clamp) */
 static void scenery_draw_hydrant(s16 x, s16 y, s16 depth, s16 side)
 {
+    enh_obj_orig(1, 2, x, y, depth, side, 0);                           /* ENH: compare record */
     s16 lod = sub16(9, depth);
     if (lod > 7) lod = 7;
     if (lod < 0) lod = 0;
@@ -868,6 +870,7 @@ static void scenery_draw_bush_group(s16 x, s16 y, s16 depth, s16 side)
 /* 0dcb:52e2 scenery_draw_sign_picture: kind 1 location sign sheet, 2 / 3 town billboards */
 static void scenery_draw_sign_picture(s16 x, s16 y, s16 depth, s16 align, s16 xclip, s16 kind)
 {
+    enh_obj_orig(2, kind, x, y, depth, align, 0);                       /* ENH: compare record */
     s16 size = sub16(9, depth);
     if (size > 6) size = 6;
     if (size < 0) size = 0;
@@ -895,6 +898,7 @@ static void scenery_draw_sign_picture(s16 x, s16 y, s16 depth, s16 align, s16 xc
 /* 0dcb:55ce scenery_draw_banner */
 static void scenery_draw_banner(s16 xl, s16 xr, s16 ytop, s16 ybot, s16 depth, s16 xclip, u16 flags)
 {
+    enh_obj_orig(3, flags >> 12, xl, ytop, depth, 0, xr);               /* ENH: compare record */
     for (s16 si = add16(DSS(DSW(DS_dash_ptr)), 1); si != 0; si--) {
         road_fillmode_end();
         road_vline(10, sub16(xl, si), ytop, ybot);
@@ -1283,9 +1287,9 @@ static void road_draw_front(void)
         if (row <= DSS(DS_top_band_row)) road_draw_row_front(row);
         C = fw(DS_centre_ptr, 0);
         if (!((C & 4) && (C & 1))) {
-            enh_layer_fg();                                             /* ENH: passthrough (sprites, S2.5) */
+            enh_objects_begin();                                        /* ENH: objects (S2.5), else passthrough */
             if (row < 11) front_objects(row);
-            enh_layer_bg();                                             /* ENH: */
+            enh_objects_end();                                          /* ENH: */
             if (!(C & 1) && MODE == 0x10) mulholland_extras_front(row);
         }
         enh_layer_fg();                                                 /* ENH: passthrough (opponent, S2.5) */

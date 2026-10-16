@@ -43,7 +43,14 @@ void enh_race_end(void);                /* race_drive.c, before arena_reset() at
 void enh_frame_begin(void);             /* first line of road_frame: start of the background layer */
 void enh_layer_fg(void);                /* before road_fillmode_end(): the foreground layer starts */
 void enh_layer_bg(void);                /* back to the background layer (passthrough brackets) */
-void enh_frame_presented(int page);     /* road_page_flip, before ega_show_page: page 1 or 2 shows this frame */
+void enh_frame_presented(int page);
+/* around front_objects (road_draw_front): its pixels belong to the enhanced view where it draws the objects (S2.5),
+ * else the original's pixels show (passthrough) */
+void enh_objects_begin(void);
+void enh_objects_end(void);
+/* compare record of an original road-side object call (scenery_draw_*): kind 0 shape, 1 hydrant, 2 sign picture,
+ * 3 banner; x2 = banner right edge */
+void enh_obj_orig(int kind, int type, int x, int y, int depth, int side, int x2);     /* road_page_flip, before ega_show_page: page 1 or 2 shows this frame */
 /* end of opponent_draw's choice: view 0 front / 1 mirror (level s >= 9), sprite level s, variant v, blitted or not */
 void enh_opp_drawn(int view, int s, int v, bool drawn);
 

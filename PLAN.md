@@ -16,7 +16,7 @@ remove it when it is done.
 | Task | What to do | For | Time |
 |---|---|---|---|
 | U1 | S2.1: run `build\sr2-enhanced.exe` (Enhanced defaults, 1280x800 frame) next to `build\sr2-enhanced.exe --classic`: menus, garage, one race. The picture must look the same in both, the mouse pointer must follow the mouse in menus and the garage, Alt+Enter full screen fine | S2.1 | 10 min |
-| U1 | S2.3 (Milestone A): run `build\sr2-enhanced.exe` next to `build\sr2-enhanced.exe --classic`; drive in town (cruise to Burger's) and race a street drag race. In Enhanced the road, kerbs, sidewalks, building walls and sky must be sharp (no stair steps) and move smoothly between the game's frames, at the same place as in classic; the sky turns slower when steering (1/8). Signs, shapes, the opponent and the mirror are still the original's pixels (later subtasks). Report anything misplaced, flickering or popping | S2.3 | 15 min |
+| U1 | S2.3 + S2.5 (town and street drag race): run `build\sr2-enhanced.exe` next to `build\sr2-enhanced.exe --classic`; drive in town (cruise to Burger's) and race a street drag race. In Enhanced the road, kerbs, sidewalks, building walls and sky must be sharp (no stair steps) and move smoothly between the game's frames, at the same place as in classic; the sky turns slower when steering (1/8). Since S2.5 the trees, lamp posts, road signs, hydrants, location signs, billboards and banners are drawn by Enhanced too: look that they are smooth (no blocky pixels, they grow steadily as you approach instead of jumping between sizes) and that **trees stand behind the buildings** (no tree in front of a wall nearer than the tree; in classic some do: that is the original's drawing order). Objects still pop in at the original's distance (row 10). The opponent and the mirror are still the original's pixels (later subtasks). Report anything misplaced, flickering or popping | S2.3, S2.5 | 15 min |
 | U3 | Decisions (defaults apply if unanswered), see U3 below | plan | 5 min |
 | U2 | The faithful playtests (U6 in `../StreetRod2/PLAN.md`) are still open. Bugs found there are fixed in the faithful repo first (S5.6) and ported here by hand | engine | - |
 
@@ -25,7 +25,8 @@ remove it when it is done.
 - **Done:** S0.1 (repo from the faithful port v0.1.0, created while the faithful playtests were still open),
   S1.1 (render back-end design: `ENHANCED.md`), S2.1 (host and coverage foundation; U1 check open),
   S2.2 (snapshots, interpolation, `SR_ENH_TRACE`, compare clock), S2.3 (Milestone A: enhanced town and street drag
-  race view, `SR_ENH_COMPARE`; its U1 check open).
+  race view, `SR_ENH_COMPARE`; its U1 check open), the road-side objects part of S2.5 for modes 0 and 1 (pulled
+  forward on the user's S2.3 playtest; U1 check open, the rest of S2.5 after S2.4).
 - **Next:** S2.4 (Sonnet: Mulholland and the drag strip). Your tasks: **User to-do** above (the S2.3 U1 check first).
 - Escalation rule: a subtask that fails twice on Sonnet → new Opus session with a 5-line note
   (symptom, file, what was tried). Never carry an old transcript over.
@@ -64,7 +65,7 @@ Design: `ENHANCED.md` (section numbers below). Stage 1 = S2.1-S2.8, stage 2 = S2
 | S2.2 | Snapshots and interpolation (§3.1): snapshot ring at `road_frame`, `enh_opp_drawn`, `enh_frame_presented`, relative-heading blend, snaps; `SR_ENH_TRACE` and the deterministic compare clock (§5). Nothing drawn yet | O | M | done 2026-10-16 |
 | S2.3 | **Milestone A** (§3.2, §3.4, §3.5): float road geometry, raster with AA, resolve through the live palette, sky, for the town and the street drag race (modes 0, 1) at draw distance 14, sprites as passthrough; `SR_ENH_COMPARE`; U1 check | O | L | U1 pending |
 | S2.4 | Mulholland (banks `BL/BR`, hillsides, drop-offs, guard rails, trusses, own sky) and the drag strip (modes 2/4: `L2/R2/C2`, flat, barrier walls) (§3.2) | S | M | |
-| S2.5 | Sprites (§3.6): SR2_SHP format-A shapes at continuous scale, signs, banners, opponent and police from native LIB3 pictures, start tree and starter; remove every passthrough | S | L | |
+| S2.5 | Sprites (§3.6): SR2_SHP format-A shapes at continuous scale, signs, banners, opponent and police from native LIB3 pictures, start tree and starter; remove every passthrough | S | L | modes 0, 1 objects done 2026-10-16 (U1 pending); rest open |
 | S2.6 | Mirror (§3.7) and the town cruise check (§3.8) | S | M | |
 | S2.7 | Aqueduct, mode 8 (§3.3): channel geometry, walls and openings, boxes, pillars, format-B shapes, float roll, rotated opponent, night sky | O | L | |
 | S2.8 | Performance pass (worker bands if over 8 ms), stage 1 acceptance (§3.10), U1/U2 playtest of all five race kinds | S | M | |
@@ -101,6 +102,26 @@ Notes:
   are the original's 1/16-px slope drift on long near bands and +-1 row tops against the textured rooftop panorama.
   Render 4.5-5 ms per displayed frame at 1280x800 2x2 (headless). `classic_check.py --scaled` now runs `--enh-modes none`,
   `--clock` masks the view rows; both, `--classic --check` and the faithful `sr2_smoke.py` (15 paths) pass.
+- S2.5, part 1 (modes 0 and 1, done 2026-10-16 before S2.4 on the user's request after the S2.3 playtest: scenery not
+  smooth, trees in front of buildings). Cause of the trees: not timing (the same number of passthrough pixels lay over
+  enhanced wall pixels at motion delay 0 and 110), but the original's order: `front_objects(row)` runs after the row's
+  walls, so an object behind the building line (trees and posts at XOL/XOR and beyond, the far trees of flag 2 at
+  (XFL + XMIN) / 2) paints over the wall of its own segment, which is nearer. `enh_sprite.c` re-makes `front_objects`
+  from the track flags at the interpolated view (shapes incl. hydrants and banner text, location sign and billboard
+  pictures from their sheets, banner frame), at the original's row values (continuous estimates of its integers);
+  sizes follow the original's LOD / sign size at its row depths, interpolated between them (the next larger LOD mapped
+  onto the interpolated box; the sheet's smaller signs are the mips). In the town the objects behind the building line
+  are drawn before the segment's walls (`ENH_OBJ_OUT`), the rest after the band; the drag race and the compare view
+  keep the original's order. `enh_objects_begin/end` replace the passthrough bracket (still a passthrough in the
+  other modes); `enh_obj_orig` hooks in `scenery_draw_shape/_hydrant/_sign_picture/_banner` record the original's calls
+  for `SR_ENH_COMPARE`: `tools/enh_compare.py` (now also the cruise) matches every call (kind, type, row depth, side,
+  anchor +-1 px; drag 7897, drive home 1224, cruise 1597 calls: all matched both ways) and checks the continuous size
+  at the original's row depths (within half a LOD step + 0.5 px: all); edges with the objects now enhanced: drag
+  99.8/99.9 % (h), 99.7/99.8 % (v), town 98.7-98.8/99.1 % (h), 96.9-97.1/98.5-98.7 % (v). The live anchors (continuous)
+  are within 1 px of the original's integers for 92 % of the calls, the rest within 1.5 px. Render 5.5-6.0 ms per
+  displayed frame at 1280x800 2x2 (headless; S2.3 4.5-5). Open in S2.5: the opponent and police (passthrough), the
+  objects of the other modes (Mulholland bushes, rocks, trusses, guard rails, drag strip start tree and starter) once
+  S2.4 draws those modes.
 
 ### Phase 3 - Input and settings
 | Id | Task | Model | Size | Status |

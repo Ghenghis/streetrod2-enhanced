@@ -69,7 +69,8 @@ u8 *ras_row(int j);                 /* sample row j (0 = top of logical row ENH_
 void ras_poly(const double *xy, int n, u8 colour);                  /* convex polygon, logical coordinates */
 void ras_rect(double x0, double y0, double x1, double y1, u8 colour);
 void ras_resolve(const u8 pal[17], const u8 *cover, u32 *out, int res_scale, int aa);
-void ras_downscale(u8 *idx);        /* 320 x (ENH_VIEW_Y1 - ENH_VIEW_Y0) indices, most frequent per pixel */
+void ras_image(const u8 *px, int w, int h, double x0, double y0, double x1, double y1, double ymax);
+void ras_downscale(u8 *idx);       /* 320 x (ENH_VIEW_Y1 - ENH_VIEW_Y0) indices, most frequent per pixel */
 u32 enh_pal_rgb(u8 attribute_reg);
 
 /* ---- road and sky (enh_road.c, §3.2, §3.5) */
@@ -77,7 +78,23 @@ void enh_sky_capture(void);         /* page 1 rows 0x66.. (sky, panorama), at th
 bool enh_road_render(const enh_view *v);    /* false: not drawn in this mode (the original's picture stays) */
 void enh_road_debug_rows(const enh_view *v, FILE *f);    /* compare aid (SR_ENH_COMPARE=3) */
 
+/* ---- road-side objects (enh_sprite.c, §3.6): front_objects of one boundary at the view */
+typedef struct {
+    int s, k;                   /* segment, the original's row (s - floor(P / 64)) */
+    double z, rc;               /* depth of the boundary; continuous row for sizes (= k when comparing) */
+    /* the original's row values at boundary s (its integers when comparing, else continuous estimates of them) */
+    double xl, xr, xol, xor_, xfl, xfr, y, ye, y16;    /* y16: 4 * ye - 3 * y (banner top) */
+    double dash;                /* dash width of the row (banner posts) */
+    bool flat_l, flat_r;        /* Yq == YT1q, Yq == YT2q (no bank at the row in front) */
+} enh_bound;
+enum { ENH_OBJ_ALL, ENH_OBJ_OUT, ENH_OBJ_IN };      /* all; behind the building line; between road and building line */
+void enh_objects(const enh_bound *b, int mode, bool compare, int pass);
+
 /* ---- compare (enh_compare.c, §5): SR_ENH_COMPARE >= 2 */
+/* object records: kind 0 shape, 1 hydrant, 2 sign picture, 3 banner; orig = recorded from the original's calls */
+void enh_compare_obj(bool orig, int kind, int type, int depth, int side, double x, double y, double x2);
+void enh_compare_size(double err, double tol);
+void enh_compare_objs_clear(void);      /* a new frame: the original's records start again */
 void enh_compare_init(int level);
 void enh_compare_frame(const enh_snap *s, int page);
 void enh_compare_race_end(void);
