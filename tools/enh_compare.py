@@ -1,19 +1,29 @@
 #!/usr/bin/env python3
 """Headless geometry acceptance of the enhanced view (ENHANCED.md §3.10 item 3, §5): SR_ENH_COMPARE=2.
 
-    python tools/enh_compare.py [--exe EXE] [--min PCT] [--dump] [--runs drag,cruise]
+    python tools/enh_compare.py [--exe EXE] [--min PCT] [--mirror-min PCT] [--dump] [--runs drag,cruise]
 
 Runs the demo drag race (road mode 1) with the drive home (town, mode 0), and the cruise to Burger's (town), with the
 compare clock and the compare tool at the default resolution (1280x800, 2x2) and --motion-delay 0. For every race
 frame the tool renders the frame's snapshot (player position quantized as the original's row depths), takes the centre
-sample of each logical pixel, lays the original's passthrough pixels (opponent, mirror) over it and matches the colour
+sample of each logical pixel, lays the original's passthrough pixels (opponent, starter) over it and matches the colour
 edges against the original's page: an edge is matched when the enhanced picture has the same edge within +-1 px (or,
 next to a textured background, the boundaries of both colours within +-1 px). Both directions (original edges found in
 the enhanced picture and the other way round), horizontal and vertical edges, rows from the top of the ground to the
 split. Since S2.5 the road-side objects are the enhanced renderer's (shapes, hydrants, sign pictures, banners): every
-call the original makes in front_objects must be matched by an enhanced call of the same kind, type, row depth and
-side with its anchor within +-1 px (and the other way round), and the continuous size at the original's row depth
-must be within half a LOD step + 0.5 px of the original's LOD.
+call the original makes in front_objects, and since S2.6 in the mirror (its banner and mirror_objects), must be matched
+by an enhanced call of the same kind, type, row depth and side with its anchor within +-1 px (and the other way
+round). Sizes: the enhanced view draws every object from its largest LOD only, scaled by true perspective (largest LOD
+l, made for row depth 9 - l, i.e. z = 8 (9 - l) + 0.5; size x zt / z), not the original's LOD steps; the compare
+view still draws the original's LOD (for the edge match), and for every shape (hydrants and banner text included) the
+height of the spans the enhanced view would emit at the original's row depth must equal the largest LOD's height x
+zt / z within 0.5 px.
+Mirror (S2.6): the enhanced mirror (backdrop pictures, road, walls, objects, frame lines; the opponent and the
+starter are the original's pixels) is edge-matched the same way inside its rectangle (rows 18..44, x 240..319), with
+the original's mirror depths (the k >= 5 step) and banks read forward as the original; the share must be at least
+--mirror-min (default 95 %): the original draws each mirror row's spans with the x of the row's top, so its nearest
+rows (bottom of the mirror, the town's sidewalks and walls) step by up to 15 px per row where the continuous view has
+straight edges, beyond the +-1 px tolerance (cruise 95.6-98.8 %, drag 99.1-99.7 %).
 Prints the matched shares per race and mode; exit code 0 when every edge share is at least --min (default 96 %) and
 every object call and size check matches.
 --dump writes cmpNNNNN.bmp (original / enhanced / difference) every 25 frames to work/ec/<run>/cmp.
@@ -52,6 +62,15 @@ def run(a, name, base):
                   "original)  worst frame %s %.2f%%" % (name, MODES.get(mode, mode), "ok" if good else "FAIL", n[0],
                                                        *shares, m.group(10), float(m.group(11))))
             continue
+        m = re.match(r"M race frames (\d+)\s+h (\d+)/(\d+) (\d+)/(\d+)\s+v (\d+)/(\d+) (\d+)/(\d+)", line)
+        if m:
+            n = [int(x) for x in m.groups()]
+            shares = [100.0 * n[i] / max(n[i + 1], 1) for i in (1, 3, 5, 7)]
+            good = min(shares) >= a.mirror_min
+            ok &= good
+            print("%-6s %-5s %-4s mirror:  h %.2f%% / %.2f%%  v %.2f%% / %.2f%%" % (name, MODES.get(mode, mode),
+                                                                             "ok" if good else "FAIL", *shares))
+            continue
         m = re.match(r"O race frames \d+\s+calls (\d+)/(\d+) (\d+)/(\d+)\s+size (\d+)/(\d+) max err ([\d.]+) px\s+(.*)", line)
         if m:
             n = [int(x) for x in m.groups()[:6]]
@@ -68,6 +87,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--exe", default=ENHANCED)
     ap.add_argument("--min", type=float, default=96.0)
+    ap.add_argument("--mirror-min", type=float, default=95.0)
     ap.add_argument("--dump", action="store_true")
     ap.add_argument("--runs", default="drag,cruise")
     a = ap.parse_args()

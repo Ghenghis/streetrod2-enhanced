@@ -107,6 +107,7 @@ layers apart (coverage).
 | `enh_race_end()` | `race_drive.c:396`, before `arena_reset()` (all exits of the loop pass here) | overlay off, free per-race data |
 | `enh_frame_begin()` | `race_road.c:1436`, first line of `road_frame` | snapshot of the frame's state (§3.1) with its tick time; start of the **background layer** |
 | `enh_layer_fg()` | `race_road.c:1450`, before `road_fillmode_end()` | end of the background layer: hood, starter slide, A-pillar and everything after are **foreground** |
+| `enh_objects_begin/end`, `enh_mirror_objects_begin/end`, `enh_obj_orig` | around `front_objects` and the mirror's banner + `mirror_objects` (`race_road.c`), in `scenery_draw_*` | the enhanced view owns the objects' pixels (S2.5, S2.6), else passthrough; compare records |
 | `enh_opp_drawn(view, s, v, drawn)` | end of `opponent_draw`, `race_opp.c:134-…` | which sprite level / variant the original chose (front or mirror call) |
 | `enh_frame_presented()` | `road_page_flip`, `race_road.c:258`, **before** `ega_show_page` | which page now carries this snapshot (the host may present during the retrace wait inside `ega_show_page`) |
 | `enh_vram_write(off, before, after)` | `vga_wr` / `vmovedata`, `platform/vga.c:135`, `:169` | per-pixel written mask (§2.1) |
@@ -127,7 +128,8 @@ layers apart (coverage).
 A pixel of the view window shows the enhanced picture only if all of these hold:
 
 * the shown page is a race page presented by `road_page_flip` with a snapshot (`enh_frame_presented`);
-* the pixel is in the view rectangle and above the split (rows 18 .. min(101, split − 1)), or in the mirror rectangle;
+* the pixel is in the view rectangle and above the split (rows 18 .. min(101, split − 1)), the mirror included
+  (since S2.6 the enhanced view draws the mirror in modes 0 and 1; before, its rectangle stayed the original's);
 * its **written bit** is clear. Per page (A200, A400) one bit per pixel:
   * background-layer writes (between `enh_frame_begin` and `enh_layer_fg`) **clear** the bits they touch: the
     enhanced view owns those pixels;
@@ -226,11 +228,25 @@ the sky racing across the screen when steering and slowed it to 1/8; use `SKY_SC
   SRE). Mode 2 draws no opponent (as the original).
 * Mip levels for downscaling from the most frequent pattern, not by averaging indices (TD2E `build_mips`).
 * Order of porting = order of passthrough removal: shapes → signs and banners → opponent and police → start props.
-* Done for modes 0 and 1 (S2.5 part 1, `enh_sprite.c`): `front_objects` re-made from the track flags at the view;
-  sizes interpolated between the original's LOD sizes at its row depths; in the town the objects behind the building
-  line (XOL / XOR and beyond) are drawn before their segment's walls, which the original paints them over (the
-  original draws a row's objects after its walls). Hooks: `enh_objects_begin/end` around `front_objects` (a
-  passthrough bracket in the modes not done yet), `enh_obj_orig` in `scenery_draw_*` (compare records).
+* Done for modes 0 and 1 (S2.5 part 1, `enh_sprite.c`): `front_objects` re-made from the track flags at the view; in
+  the town the objects behind the building line (XOL / XOR and beyond) are drawn before their segment's walls, which
+  the original paints them over (the original draws a row's objects after its walls). Hooks: `enh_objects_begin/end`
+  around `front_objects` (a passthrough bracket in the modes not done yet), `enh_obj_orig` in `scenery_draw_*`
+  (compare records).
+* **Largest source only, true perspective** (user feedback 2026-10-16: the first version interpolated between the
+  original's LOD sizes, so objects showed the steps and ballooned on approach). Every object is drawn from its largest
+  source: shapes from the largest LOD l = min(n - 1, clamp) of their set, which the original uses at row depth 9 - l
+  (boundary z = 8 (9 - l) + 4 - q, on average zt = 8 (9 - l) + 0.5: 24.5 for 7-LOD sets, 16.5 for the hydrant), scaled
+  by zt / z about the anchor; a far object the original draws `off` rows smaller (flag 2 trees, L / R 0x200) by
+  zt / (z + 8 off); signs and billboards from the sheet's largest size (64 x 43, row depth 3) by 24.5 / z. So the size
+  equals the original's at the largest LOD's row and is the true 1/z everywhere else (larger than the original nearer,
+  where it keeps LOD 6, and farther, where its LODs 0..2 are only 45..75 % of 1/z: the cause of the fast growth).
+  Where the original draws nothing (a depth whose LOD the set lacks) nothing is drawn. Pop-in: the original's row 10
+  would show a 1/z object at twice its LOD 0 size; the enhanced view draws the objects out to the road's far end (row
+  14, z <= 116) and fades them in over the last segment (screen-door coverage `ras_alpha`, resolved by the AA average).
+  Compare (`SR_ENH_COMPARE=2`): the compare view still draws the original's LOD and rows < 11 (edge match and call
+  match: kind, type, depth, side, anchor +-1 px); the size check measures the spans the live view would emit at the
+  original's row depth against the largest LOD's height x zt / z (within 0.5 px).
 
 ### 3.7 Mirror
 
@@ -238,6 +254,18 @@ The same renderer with the mirror projection, 7 rows behind, clipped to (240,22)
 original's mirror backdrop (`mirror_draw_backdrop`, `race_road.c:969`) scaled; frame lines redrawn at output
 resolution. Intentional deviations (recorded, visible in the compare tool): continuous mirror depth instead of the
 k ≥ 5 step, banks read behind the car (the original reads `BL/BR` forward in the mirror, RR `0ce4`).
+
+Done for modes 0 and 1 (S2.6, `enh_road.c` `mirror`): projection `x = 280 + (YAW − heading) / 4 − (cam_x − x) / z`,
+`y = 36 + (HGT − height) + (y − cam_y) / z` with z = (P − Pw) / 8 ≥ 8 (row 0); row r between boundaries seg − r
+and seg − r + 1 with the flags of segment seg − r − 1 (the original's flag pointers); backdrop pictures from page 2's
+store (frame 2005 rows 20..44 and its mount rows 18..19, the 2-row horizon strip of 2063 above the far row), the town
+walls (C & 1 only; tall part half height left, full right, as the original), bands, dashes, the banner and
+`mirror_objects` with the rules of §3.6 (size depth = 4 × the mirror's z), frame lines. The objects behind the
+building line go before the row's walls as in the front view. The opponent / police car and the starter stay the
+original's pixels (passthrough brackets in `road_draw_mirror` and `mirror_objects`). Hooks:
+`enh_mirror_objects_begin/end` around the banner and `mirror_objects`. Compare: the mirror rectangle is edge-matched
+apart (`M` lines) with the original's depths and banks; the original's nearest mirror rows step by up to 15 px per
+pixel row (spans at the row's top), so the town reaches 95.6-98.8 % there (threshold 95 %).
 
 ### 3.8 Town cruise
 

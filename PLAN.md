@@ -16,7 +16,7 @@ remove it when it is done.
 | Task | What to do | For | Time |
 |---|---|---|---|
 | U1 | S2.1: run `build\sr2-enhanced.exe` (Enhanced defaults, 1280x800 frame) next to `build\sr2-enhanced.exe --classic`: menus, garage, one race. The picture must look the same in both, the mouse pointer must follow the mouse in menus and the garage, Alt+Enter full screen fine | S2.1 | 10 min |
-| U1 | S2.3 + S2.5 (town and street drag race): run `build\sr2-enhanced.exe` next to `build\sr2-enhanced.exe --classic`; drive in town (cruise to Burger's) and race a street drag race. In Enhanced the road, kerbs, sidewalks, building walls and sky must be sharp (no stair steps) and move smoothly between the game's frames, at the same place as in classic; the sky turns slower when steering (1/8). Since S2.5 the trees, lamp posts, road signs, hydrants, location signs, billboards and banners are drawn by Enhanced too: look that they are smooth (no blocky pixels, they grow steadily as you approach instead of jumping between sizes) and that **trees stand behind the buildings** (no tree in front of a wall nearer than the tree; in classic some do: that is the original's drawing order). Objects still pop in at the original's distance (row 10). The opponent and the mirror are still the original's pixels (later subtasks). Report anything misplaced, flickering or popping | S2.3, S2.5 | 15 min |
+| U1 | S2.3 + S2.5 + S2.6 (town and street drag race): run `build\sr2-enhanced.exe` next to `build\sr2-enhanced.exe --classic`; drive in town (cruise to Burger's) and race a street drag race. In Enhanced the road, kerbs, sidewalks, building walls and sky must be sharp (no stair steps) and move smoothly between the game's frames, at the same place as in classic; the sky turns slower when steering (1/8). **Objects** (trees, lamp posts, road signs, hydrants, location signs, billboards, banners): since your S2.5 feedback each is drawn from its largest picture only and scaled by true perspective, so look that they **grow smoothly and slowly** as you approach, with **no size steps** (no LOD changes), the same size as classic when near (rows where classic shows its biggest picture), smaller than classic's jumps would suggest in the middle distance, and that they now appear at the far end of the road (fading in) instead of popping in halfway; trees stand behind the buildings. **Mirror**: now drawn by Enhanced too: sharp road, walls, trees and banners in it, the same view as classic, moving smoothly, frame lines crisp; the opponent / police car and the starter in the mirror are still classic pixels (later subtask). Report anything misplaced, flickering, popping or too big | S2.3, S2.5, S2.6 | 15 min |
 | U3 | Decisions (defaults apply if unanswered), see U3 below | plan | 5 min |
 | U2 | The faithful playtests (U6 in `../StreetRod2/PLAN.md`) are still open. Bugs found there are fixed in the faithful repo first (S5.6) and ported here by hand | engine | - |
 
@@ -26,8 +26,9 @@ remove it when it is done.
   S1.1 (render back-end design: `ENHANCED.md`), S2.1 (host and coverage foundation; U1 check open),
   S2.2 (snapshots, interpolation, `SR_ENH_TRACE`, compare clock), S2.3 (Milestone A: enhanced town and street drag
   race view, `SR_ENH_COMPARE`; its U1 check open), the road-side objects part of S2.5 for modes 0 and 1 (pulled
-  forward on the user's S2.3 playtest; U1 check open, the rest of S2.5 after S2.4).
-- **Next:** S2.4 (Sonnet: Mulholland and the drag strip). Your tasks: **User to-do** above (the S2.3 U1 check first).
+  forward on the user's S2.3 playtest; since the S2.5 playtest the largest LOD only at true 1/z; the rest of S2.5 after
+  S2.4), S2.6 for modes 0 and 1 (enhanced mirror, town cruise checked; U1 check open).
+- **Next:** S2.4 (Sonnet: Mulholland and the drag strip). Your tasks: **User to-do** above (the S2.3 + S2.5 + S2.6 U1 check first).
 - Escalation rule: a subtask that fails twice on Sonnet → new Opus session with a 5-line note
   (symptom, file, what was tried). Never carry an old transcript over.
 
@@ -65,8 +66,8 @@ Design: `ENHANCED.md` (section numbers below). Stage 1 = S2.1-S2.8, stage 2 = S2
 | S2.2 | Snapshots and interpolation (§3.1): snapshot ring at `road_frame`, `enh_opp_drawn`, `enh_frame_presented`, relative-heading blend, snaps; `SR_ENH_TRACE` and the deterministic compare clock (§5). Nothing drawn yet | O | M | done 2026-10-16 |
 | S2.3 | **Milestone A** (§3.2, §3.4, §3.5): float road geometry, raster with AA, resolve through the live palette, sky, for the town and the street drag race (modes 0, 1) at draw distance 14, sprites as passthrough; `SR_ENH_COMPARE`; U1 check | O | L | U1 pending |
 | S2.4 | Mulholland (banks `BL/BR`, hillsides, drop-offs, guard rails, trusses, own sky) and the drag strip (modes 2/4: `L2/R2/C2`, flat, barrier walls) (§3.2) | S | M | |
-| S2.5 | Sprites (§3.6): SR2_SHP format-A shapes at continuous scale, signs, banners, opponent and police from native LIB3 pictures, start tree and starter; remove every passthrough | S | L | modes 0, 1 objects done 2026-10-16 (U1 pending); rest open |
-| S2.6 | Mirror (§3.7) and the town cruise check (§3.8) | S | M | |
+| S2.5 | Sprites (§3.6): SR2_SHP format-A shapes at continuous scale, signs, banners, opponent and police from native LIB3 pictures, start tree and starter; remove every passthrough | S | L | modes 0, 1 objects done 2026-10-16, largest LOD + true 1/z 2026-10-16 (U1 pending); rest open |
+| S2.6 | Mirror (§3.7) and the town cruise check (§3.8) | S | M | modes 0, 1 done 2026-10-16 (U1 pending); opponent / starter in the mirror passthrough |
 | S2.7 | Aqueduct, mode 8 (§3.3): channel geometry, walls and openings, boxes, pillars, format-B shapes, float roll, rotated opponent, night sky | O | L | |
 | S2.8 | Performance pass (worker bands if over 8 ms), stage 1 acceptance (§3.10), U1/U2 playtest of all five race kinds | S | M | |
 | S2.9 | Longer draw distance, stage 2 (§4): table ends per mode, far scenery fade, opponent at distance, haze, mirror distance (was E2) | O | L | |
@@ -122,6 +123,23 @@ Notes:
   displayed frame at 1280x800 2x2 (headless; S2.3 4.5-5). Open in S2.5: the opponent and police (passthrough), the
   objects of the other modes (Mulholland bushes, rocks, trusses, guard rails, drag strip start tree and starter) once
   S2.4 draws those modes.
+- S2.5 part 2 and S2.6 (modes 0 and 1, 2026-10-16, on the user's S2.5 playtest: objects showed the LOD steps and grew
+  too fast on approach; "keep only the highest level, also in the mirror"). The original's LODs 3..6 follow 1/z
+  (tree: height x z = 2040..2230) but LODs 0..2 are only 45..75 % of it, so the interpolated sizes grew 3x over rows
+  9..6. Now every object is drawn from its largest LOD / the sign sheet's largest size, scaled by zt / z (zt: that
+  LOD's row depth, 24.5; hydrant 16.5; far objects zt / (z + 8 off)); size = the original's at the largest LOD's row,
+  true 1/z elsewhere (ENHANCED.md §3.6). At row 10 that is twice the original's LOD 0, so the objects are now drawn out
+  to the road's far end (row 14) and fade in over its last segment (`ras_alpha` screen door). Mirror (`enh_road.c`
+  `mirror`): mirror projection, rows 1..7 (flags seg - r - 1), backdrop pictures from page 2 (`enh_sheet`, now
+  reading the VRAM page from its segment), town walls, bands, dashes, banner and `mirror_objects` (same size rules,
+  depth 4 x mirror z), frame lines, clipped to the mirror (`ras_clip`); coverage no longer excludes the mirror;
+  opponent / police and starter in the mirror are passthrough brackets (not trivial: native sprites are S2.5's open
+  part). Hooks: `enh_mirror_objects_begin/end`, two passthrough brackets. `tools/enh_compare.py`: object calls now
+  also from the mirror (drag 12842, drive home 1951, cruise 2473: all matched both ways), sizes measured against the
+  largest-LOD perspective expectation (all within 0.5 px), mirror edges apart (drag 99.1-99.7 %, town 95.6-98.8 %,
+  threshold `--mirror-min` 95: the original's near mirror rows step up to 15 px per pixel row); view edges unchanged
+  (drag 99.7-99.9 %, town 96.9-99.1 %). Render 7.2 ms per displayed frame in the cruise at 1280x800 2x2 (headless, the S2.5 build 6.1 ms back to back; the machine was loaded). Identity: classic_check plain, `--clock`, `--classic --check`, faithful smoke 15/15 ok; `--scaled 4` race_drag diverged (whole race, not the picture) in 3 of 7 runs under 100 % external CPU load, ok in the last 2 (the S2.5 build 6/6 ok in the same period): rerun when the machine is idle. Town cruise (§3.8): mode 0 runs the normal renderer, compared in
+  the cruise run.
 
 ### Phase 3 - Input and settings
 | Id | Task | Model | Size | Status |

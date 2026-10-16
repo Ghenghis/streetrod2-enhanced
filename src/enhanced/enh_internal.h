@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "mem.h"
 #include "types.h"
 
 /* One snapshot per road_frame (ENHANCED.md §3.1), read from DGROUP at enh_frame_begin; the Aqueduct group and the
@@ -68,6 +69,8 @@ int ras_S(void);
 u8 *ras_row(int j);                 /* sample row j (0 = top of logical row ENH_VIEW_Y0), 320 * S samples */
 void ras_poly(const double *xy, int n, u8 colour);                  /* convex polygon, logical coordinates */
 void ras_rect(double x0, double y0, double x1, double y1, u8 colour);
+void ras_clip(double x0, double y0, double x1, double y1);         /* fills cut to [x0, x1) x [y0, y1) (ras_begin: view) */
+void ras_alpha(double a);           /* coverage 0..1 of the following fills (screen door; ras_begin: 1) */
 void ras_resolve(const u8 pal[17], const u8 *cover, u32 *out, int res_scale, int aa);
 void ras_image(const u8 *px, int w, int h, double x0, double y0, double x1, double y1, double ymax);
 void ras_downscale(u8 *idx);       /* 320 x (ENH_VIEW_Y1 - ENH_VIEW_Y0) indices, most frequent per pixel */
@@ -78,17 +81,25 @@ void enh_sky_capture(void);         /* page 1 rows 0x66.. (sky, panorama), at th
 bool enh_road_render(const enh_view *v);    /* false: not drawn in this mode (the original's picture stays) */
 void enh_road_debug_rows(const enh_view *v, FILE *f);    /* compare aid (SR_ENH_COMPARE=3) */
 
-/* ---- road-side objects (enh_sprite.c, §3.6): front_objects of one boundary at the view */
+/* ---- road-side objects (enh_sprite.c, §3.6): front_objects of one boundary, or the mirror's banner and
+ * mirror_objects of one row, at the view */
 typedef struct {
-    int s, k;                   /* segment, the original's row (s - floor(P / 64)) */
-    double z, rc;               /* depth of the boundary; continuous row for sizes (= k when comparing) */
-    /* the original's row values at boundary s (its integers when comparing, else continuous estimates of them) */
+    int s, k;                   /* flags segment; the original's row (front: s - floor(P / 64); mirror: row 1..7) */
+    bool mirror;                /* road_draw_mirror's objects */
+    int depth, depth_banner;    /* the original's depth argument (LOD / sign size 9 - depth): front k, k; mirror
+                                 * (row >> 1) + 7, row + 5 */
+    double z;                   /* depth for the perspective size in front units (front z; mirror 4 x the mirror's z) */
+    double fade;                /* coverage 0..1 (the front's far end: objects fade in) */
+    /* the original's row values at the boundary (its integers when comparing, else continuous estimates of them) */
     double xl, xr, xol, xor_, xfl, xfr, y, ye, y16;    /* y16: 4 * ye - 3 * y (banner top) */
     double dash;                /* dash width of the row (banner posts) */
     bool flat_l, flat_r;        /* Yq == YT1q, Yq == YT2q (no bank at the row in front) */
 } enh_bound;
 enum { ENH_OBJ_ALL, ENH_OBJ_OUT, ENH_OBJ_IN };      /* all; behind the building line; between road and building line */
 void enh_objects(const enh_bound *b, int mode, bool compare, int pass);
+/* a w x h rectangle at (sx, sy) of picture / page descriptor d as palette indices (whole bytes; valid until the next
+ * call); false when out of the picture */
+bool enh_sheet(FarPtr d, int sx, int sy, int w, int h, const u8 **px, int *wout);
 
 /* ---- compare (enh_compare.c, §5): SR_ENH_COMPARE >= 2 */
 /* object records: kind 0 shape, 1 hydrant, 2 sign picture, 3 banner; orig = recorded from the original's calls */
@@ -98,6 +109,6 @@ void enh_compare_objs_clear(void);      /* a new frame: the original's records s
 void enh_compare_init(int level);
 void enh_compare_frame(const enh_snap *s, int page);
 void enh_compare_race_end(void);
-bool enh_mirror_px(int x, int y);   /* (x, y) belongs to the mirror (the original's until S2.6) */
+bool enh_mirror_px(int x, int y);   /* (x, y) belongs to the mirror (its backdrop, frame and glass) */
 
 #endif

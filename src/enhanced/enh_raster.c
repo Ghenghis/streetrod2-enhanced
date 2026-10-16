@@ -2,7 +2,8 @@
  * The buffer covers the road view rows ENH_VIEW_Y0 .. ENH_VIEW_Y1 - 1 (the original's view clip) at S = res_scale * aa
  * samples per logical pixel, one palette index per sample. Coordinates given to the fill functions are logical
  * (320 x 200 screen) floats: pixel (x, y) covers [x, x + 1) x [y, y + 1); a sample is inside a polygon when its centre
- * is. The resolve averages the aa x aa samples of an output pixel in linear light. */
+ * is. Fills are cut to the clip rectangle (ras_clip; the view, or the mirror) and written through a screen door of
+ * coverage ras_alpha (1 = opaque; the fade-in of far objects). The resolve averages the aa x aa samples of an output pixel in linear light. */
 #include "enh_internal.h"
 
 #include <math.h>
@@ -14,7 +15,13 @@
 static struct {
     int S, w, h;            /* samples per logical pixel, buffer size in samples */
     u8 *buf;
+    int ci0, ci1, cj0, cj1; /* clip rectangle in samples (ras_clip) */
+    int alpha;              /* screen-door coverage 0..16 (ras_alpha), 16 = opaque */
 } rb;
+
+/* 4 x 4 ordered-dither thresholds: a sample is written when its threshold is below the coverage (screen door; the
+ * resolve's aa x aa average turns it into partial coverage) */
+static const u8 bayer[4][4] = { { 0, 8, 2, 10 }, { 12, 4, 14, 6 }, { 3, 11, 1, 9 }, { 15, 7, 13, 5 } };
 
 bool ras_begin(int S)
 {
@@ -27,18 +34,40 @@ bool ras_begin(int S)
         rb.w = w;
         rb.h = h;
     }
+    ras_clip(0, ENH_VIEW_Y0, 320, ENH_VIEW_Y1);
+    rb.alpha = 16;
     return true;
 }
+
+void ras_clip(double x0, double y0, double x1, double y1)
+{
+    int S = rb.S;
+    rb.ci0 = (int)lround(x0 * S); rb.ci1 = (int)lround(x1 * S);
+    rb.cj0 = (int)lround((y0 - ENH_VIEW_Y0) * S); rb.cj1 = (int)lround((y1 - ENH_VIEW_Y0) * S);
+    if (rb.ci0 < 0) rb.ci0 = 0;
+    if (rb.ci1 > rb.w) rb.ci1 = rb.w;
+    if (rb.cj0 < 0) rb.cj0 = 0;
+    if (rb.cj1 > rb.h) rb.cj1 = rb.h;
+}
+
+void ras_alpha(double a) { rb.alpha = a >= 1.0 ? 16 : a <= 0.0 ? 0 : (int)lround(a * 16.0); }
+
+static bool row_in(int j) { return j >= rb.cj0 && j < rb.cj1; }
 
 int ras_S(void) { return rb.S; }
 u8 *ras_row(int j) { return rb.buf + (size_t)j * rb.w; }
 
 static void span(int j, double xa, double xb, u8 c)
 {
+    if (!row_in(j) || !rb.alpha) return;
     int i0 = (int)ceil(xa - 0.5), i1 = (int)ceil(xb - 0.5);      /* centres i + 0.5 in [xa, xb) */
-    if (i0 < 0) i0 = 0;
-    if (i1 > rb.w) i1 = rb.w;
-    if (i1 > i0) memset(rb.buf + (size_t)j * rb.w + i0, c, (size_t)(i1 - i0));
+    if (i0 < rb.ci0) i0 = rb.ci0;
+    if (i1 > rb.ci1) i1 = rb.ci1;
+    if (i1 <= i0) return;
+    u8 *d = rb.buf + (size_t)j * rb.w;
+    if (rb.alpha >= 16) { memset(d + i0, c, (size_t)(i1 - i0)); return; }
+    const u8 *t = bayer[j & 3];
+    for (int i = i0; i < i1; i++) if (t[i & 3] < rb.alpha) d[i] = c;
 }
 
 void ras_rect(double x0, double y0, double x1, double y1, u8 c)
@@ -59,19 +88,19 @@ void ras_image(const u8 *px, int w, int h, double x0, double y0, double x1, doub
     double S = rb.S, sl = x0 * S, sr = x1 * S, st = (y0 - ENH_VIEW_Y0) * S, sb = (y1 - ENH_VIEW_Y0) * S;
     double sm = (ymax - ENH_VIEW_Y0) * S;
     int i0 = (int)ceil(sl - 0.5), i1 = (int)ceil(sr - 0.5), j0 = (int)ceil(st - 0.5), j1 = (int)ceil(fmin(sb, sm) - 0.5);
-    if (i0 < 0) i0 = 0;
-    if (i1 > rb.w) i1 = rb.w;
-    if (j0 < 0) j0 = 0;
-    if (j1 > rb.h) j1 = rb.h;
+    if (i0 < rb.ci0) i0 = rb.ci0;
+    if (i1 > rb.ci1) i1 = rb.ci1;
+    if (j0 < rb.cj0) j0 = rb.cj0;
+    if (j1 > rb.cj1) j1 = rb.cj1;
     double du = w / (sr - sl), dv = h / (sb - st);
     for (int j = j0; j < j1; j++) {
         int v = (int)((j + 0.5 - st) * dv);
         if (v < 0 || v >= h) continue;
-        const u8 *src = px + (size_t)v * w;
+        const u8 *src = px + (size_t)v * w, *t = bayer[j & 3];
         u8 *out = rb.buf + (size_t)j * rb.w;
         for (int i = i0; i < i1; i++) {
             int u = (int)((i + 0.5 - sl) * du);
-            if (u >= 0 && u < w) out[i] = src[u];
+            if (u >= 0 && u < w && t[i & 3] < rb.alpha) out[i] = src[u];
         }
     }
 }

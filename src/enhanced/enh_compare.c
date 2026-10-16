@@ -2,7 +2,7 @@
  * SR_ENH_COMPARE=2 (with the deterministic clock of =1): at every road_page_flip of a race drawn enhanced, the frame's
  * snapshot is rendered at the configured resolution without interpolation (motion delay 0) and with the player position
  * quantized as the original's row depths (substep / 8 truncated), box-filtered back to 320 x 200 (the most frequent
- * index per pixel) and laid over the original's page where the original's pixels show (passthrough sprites, mirror).
+ * index per pixel) and laid over the original's page where the original's pixels show (passthrough sprites).
  * The colour edges of both pictures are then matched: every horizontal edge (between x - 1 and x on a row) and vertical
  * edge of the original must have an edge with the same two colours within +-1 px in the enhanced picture, and the
  * other way round. Rows from the top of the ground (DS:975E; the town: the view top) to the split; the sky panorama,
@@ -10,13 +10,17 @@
  * Output (SR_ENH_COMPARE_LOG=file, default stderr), one line per frame and one per race:
  *   K frame mode seg substep  h orig_matched/orig_edges enh_matched/enh_edges  v ...
  *   K race frames N  h ... v ...  worst frame F pct
- * Road-side objects (S2.5): every call of scenery_draw_shape / _hydrant / _sign_picture / _banner in front_objects is
- * recorded (enh_obj_orig) with its anchor, row depth, side and type, and so is every call the enhanced renderer makes
- * for the compare view (enh_sprite.c, the original's LOD); a call is matched by one of the same kind, type, depth and
- * side with the anchor (and a banner's right edge) within +-1 px. The size the enhanced renderer uses at the
- * original's row depth with the continuous LOD is checked against the original's LOD: within half a LOD step + 0.5 px.
+ * Road-side objects (S2.5): every call of scenery_draw_shape / _hydrant / _sign_picture / _banner in front_objects and
+ * (S2.6) in the mirror's banner and mirror_objects (kind + 4) is recorded (enh_obj_orig) with its anchor, row depth,
+ * side and type, and so is every call the enhanced renderer makes for the compare view (enh_sprite.c, which draws the
+ * original's LOD there); a call is matched by one of the same kind, type, depth and side with the anchor (and a
+ * banner's right edge) within +-1 px. Size: the enhanced view draws the largest LOD only, scaled by true perspective;
+ * the height of the spans it would emit at the original's row depth must equal the largest LOD's height x zt / z
+ * (zt its row depth) within 0.5 px.
  *   O frame orig_calls enh_calls orig_matched enh_matched size_ok/size_checks
  *   O race frames N  calls orig_matched/orig enh_matched/enh  size ok/checks max err px
+ * Mirror (S2.6): the same edge match inside the mirror (enh_mirror_px), reported apart:
+ *   M frame  h ... v ...       M race frames N  h ... v ...
  * SR_ENH_COMPARE=3 also lists the unmatched edges and object calls of each frame (first 12). SR_ENH_COMPARE_DIR=dir writes every
  * SR_ENH_COMPARE_EVERY-th (default 25) compared frame as cmpNNNNN.bmp: original, enhanced, difference. */
 #include "enh_internal.h"
@@ -41,6 +45,7 @@ static struct {
     int every;
     unsigned frames, dumped;
     unsigned long hn, hm, hen, hem, vn, vm, ven, vem;   /* race totals */
+    unsigned long mir[8];                               /* the same in the mirror (S2.6) */
     double worst;
     unsigned worst_frame;
     unsigned long miss_y[ROWS], miss_pair[16][16];  /* unmatched edges by row and colour pair (SR_ENH_COMPARE=3) */
@@ -250,7 +255,7 @@ void enh_compare_frame(const enh_snap *s, int page)
             int sy = y + ENH_VIEW_Y0;
             O[y][x] = page_px(page, x, sy);
             X[y][x] = enh_mirror_px(x, sy);
-            if (X[y][x] || enh_written(page, x, sy)) E[y][x] = O[y][x];
+            if (enh_written(page, x, sy)) E[y][x] = O[y][x];      /* passthrough pixels */
         }
     int top = s->racing ? DSS(DS_ground_top_y) : ENH_VIEW_Y0;
     if (top < ENH_VIEW_Y0) top = ENH_VIEW_Y0;
@@ -263,6 +268,19 @@ void enh_compare_frame(const enh_snap *s, int page)
     count(E, O, y0, 0, 1, &ven, &vem, list, "v enh");
     fprintf(cmp.log, "K %u %d %d %d  h %u/%u %u/%u  v %u/%u %u/%u\n", s->frame, s->mode, s->seg, s->substep,
             hm, hn, hem, hen, vm, vn, vem, ven);
+    /* the mirror (backdrop, glass, frame): the same edge match inside it (S2.6) */
+    unsigned mc[8] = { 0 };
+    for (int y = 0; y < ROWS; y++)
+        for (int x = 0; x < 320; x++) X[y][x] = !enh_mirror_px(x, y + ENH_VIEW_Y0);
+    count(O, E, 0, 1, 0, &mc[0], &mc[1], list, "mh orig");
+    count(E, O, 0, 1, 0, &mc[2], &mc[3], list, "mh enh");
+    count(O, E, 0, 0, 1, &mc[4], &mc[5], list, "mv orig");
+    count(E, O, 0, 0, 1, &mc[6], &mc[7], list, "mv enh");
+    for (int i = 0; i < 8; i++) cmp.mir[i] += mc[i];
+    fprintf(cmp.log, "M %u  h %u/%u %u/%u  v %u/%u %u/%u\n", s->frame, mc[1], mc[0], mc[3], mc[2], mc[5], mc[4],
+            mc[7], mc[6]);
+    for (int y = 0; y < ROWS; y++)
+        for (int x = 0; x < 320; x++) X[y][x] = enh_mirror_px(x, y + ENH_VIEW_Y0);
     unsigned om = obj_match(1, 0, list), em = obj_match(0, 1, list);
     fprintf(cmp.log, "O %u %d %d %u %u %u/%u\n", s->frame, objs.n[1], objs.n[0], om, em, objs.sm, objs.sn);
     cmp.on += objs.n[1]; cmp.om += om; cmp.en += objs.n[0]; cmp.em += em; cmp.sn += objs.sn; cmp.sm += objs.sm;
@@ -283,6 +301,8 @@ void enh_compare_race_end(void)
     if (cmp.level < 2 || !cmp.frames) return;
     fprintf(cmp.log, "K race frames %u  h %lu/%lu %lu/%lu  v %lu/%lu %lu/%lu  worst frame %u %.2f%%\n", cmp.frames,
             cmp.hm, cmp.hn, cmp.hem, cmp.hen, cmp.vm, cmp.vn, cmp.vem, cmp.ven, cmp.worst_frame, cmp.worst);
+    fprintf(cmp.log, "M race frames %u  h %lu/%lu %lu/%lu  v %lu/%lu %lu/%lu\n", cmp.frames, cmp.mir[1], cmp.mir[0],
+            cmp.mir[3], cmp.mir[2], cmp.mir[5], cmp.mir[4], cmp.mir[7], cmp.mir[6]);
     fprintf(cmp.log, "O race frames %u  calls %lu/%lu %lu/%lu  size %lu/%lu max err %.2f px  (shapes %lu hydrants %lu pictures %lu banners %lu)\n", cmp.frames, cmp.om,
             cmp.on, cmp.em, cmp.en, cmp.sm, cmp.sn, cmp.smax, cmp.kinds[0], cmp.kinds[1], cmp.kinds[2], cmp.kinds[3]);
     if (cmp.level >= 3) {

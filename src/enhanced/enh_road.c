@@ -4,7 +4,9 @@
  * interpolated view, each segment cut into slices so that YAW / HGT / edges vary continuously, and emitted far to
  * near in the original's painter's order (road_draw_front: town walls, then the band of each row, then the row's
  * road-side objects, enh_sprite.c, S2.5). The opponent is the original's pixels (passthrough brackets in
- * road_draw_front); the mirror is the original's until S2.6.
+ * road_draw_front and road_draw_mirror). The mirror (S2.6, §3.7) is the same renderer with road_proj_x_mirror /
+ * road_proj_y_mirror (1/4 of the front's scale, centre 280, 36), 7 rows behind, clipped to (240, 22)-(319, 42), over
+ * the original's backdrop pictures; frame lines redrawn.
  *
  * World: a position Pw along the road in sub-steps (64 per segment), lateral x and height y in road units (road
  * 0x5DC..0xCE4, surface y 2000, eye 0x76C). Depth z = (Pw - P) / 8 + 4, so segment seg + k lies at the original's row
@@ -40,13 +42,34 @@ typedef struct {
     bool racing, compare;
     int start_seg;
     double w;                   /* outer band width: 400 (200 Mulholland) */
+    bool mirror;                /* the mirror's projection (proj_x / proj_y) */
 } cam;
 
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
 static u16 flag(u16 arr, int s) { return TRKW(arr, clampi(s, 0, TRK_N - 1)); }
 
+/* ---------------------------------------------------------------- mirror projection (road_project_mirror) */
+
+#define MIR_X0   0xF0           /* clip_set_mirror: x 240..319, rows 22..42 */
+#define MIR_Y0   0x16
+#define MIR_Y1   0x2B
+#define MIR_NEAR 8.0            /* row 0 of road_project_mirror */
+
+/* The mirror's depth of Pw (behind the car): continuous (P - Pw) / 8, at least 8 (the original's row 0); comparing
+ * (Pw a boundary) the original's: row 0: 8, rows 1..4: 8k + q, rows 5..7: 8k (the k >= 5 step, §3.7). */
+static double mir_z(const cam *c, double Pw)
+{
+    if (!c->compare) return fmax((c->P - Pw) / 8.0, MIR_NEAR);
+    int k = c->seg0 - (int)lround(Pw / 64.0), q = (int)fmod(c->P, 64.0) >> 3;
+    return k <= 0 ? 8.0 : k <= 4 ? 8.0 * k + q : 8.0 * k;
+}
+
+static double mir_dx(const cam *c, double Pw) { return enh_track_yaw(Pw) - c->heading; }
+static double mir_dy(const cam *c, double Pw) { return (c->mode & 6) ? 0.0 : enh_track_hgt(Pw) - c->hgt; }
+
 static double proj_x(const cam *c, double Pw, double xw)
 {
+    if (c->mirror) return 280.0 + mir_dx(c, Pw) / 4.0 - (c->cx - xw) / mir_z(c, Pw) + XOFF;
     double z = (Pw - c->P) / 8.0 + 4.0;
     double dx = c->heading - enh_track_yaw(Pw);
     return 160.0 + dx - 4.0 * (c->cx - xw) / z + XOFF;
@@ -54,6 +77,7 @@ static double proj_x(const cam *c, double Pw, double xw)
 
 static double proj_y(const cam *c, double Pw, double yw)
 {
+    if (c->mirror) return 36.0 + mir_dy(c, Pw) + (yw - c->cy) / mir_z(c, Pw) + YOFF;
     double z = (Pw - c->P) / 8.0 + 4.0;
     double dy = (c->mode & 6) ? 0.0 : c->hgt - enh_track_hgt(Pw);
     return 2.0 * dy + 4.0 * (yw - c->cy) / z + c->bounce + 60.0 + YOFF;
@@ -202,16 +226,17 @@ static double est_y(const cam *c, double Pw, double yw)
     return v - 0.5 * fmin(fmax(v / 2.0, -1.0), 1.0) + c->bounce + 60.0;
 }
 
-/* front_objects of segment s (row k = s - seg0 < 11) at its far boundary, the objects of `pass` */
+/* front_objects of segment s (row k = s - seg0; the original's rows < 11, live up to row 14) at its far boundary,
+ * the objects of `pass` */
 static void objects(const cam *c, int s, int pass)
 {
     int k = s - c->seg0;
-    if (k < 1 || k > 10) return;
+    if (k < 1 || k > (c->compare ? 10 : 14)) return;   /* the original: rows < 11; live: to the road's far end */
     double Pw = s * 64.0, l, r;
     edges_at(s, &l, &r);
-    enh_bound b = { .s = s, .k = k };
+    enh_bound b = { .s = s, .k = k, .depth = k, .depth_banner = k };
     b.z = (Pw - c->P) / 8.0 + 4.0;
-    b.rc = c->compare ? k : (b.z - 4.0) / 8.0 + 7.0 / 16.0;            /* row k spans q = 7..0: centred */
+    b.fade = c->compare ? 1.0 : fmin(fmax((FAR_Z - b.z) / 8.0, 0.0), 1.0);  /* fade in over the last segment */
     b.xl = est_x(c, Pw, l);
     b.xr = est_x(c, Pw, r);
     b.xol = est_x(c, Pw, 0x5DC - c->w);
@@ -325,10 +350,182 @@ static void sky(const cam *c)
     }
 }
 
+/* ---------------------------------------------------------------- mirror (road_draw_mirror, §3.7) */
+
+/* Mirror row r (1..7) lies between boundaries seg - r (far, the row's values) and seg - r + 1 (near) and carries the
+ * flags of segment seg - r - 1 (the original's flag pointers start at seg - 8 for row 7). */
+
+/* dash width of mirror row r (table DS:7E52 from index 13 + r): constant per row when comparing, else continuous */
+static double mir_dash(const cam *c, int r, double Pw)
+{
+    if (c->compare) return DSS((u16)(DS_dash_width + 2 * clampi(13 + r, 0, 24)));
+    double kf = 12.5 + (c->P - Pw) / 64.0;
+    int k0 = clampi((int)floor(kf), 0, 24), k1 = clampi(k0 + 1, 0, 24);
+    double f = fmin(fmax(kf - floor(kf), 0.0), 1.0);
+    s16 w0 = DSS((u16)(DS_dash_width + 2 * k0)), w1 = DSS((u16)(DS_dash_width + 2 * k1));
+    return w0 + (w1 - w0) * f;
+}
+
+/* town_walls_mirror (town blocks only, C & 1): the tall part is half the wall's height on the left and as high on the
+ * right (the original's k = 2 - (left == 0)); the end faces look at segment s + 1, nearer the car */
+static void mir_walls(const cam *c, int s, const sect *p, int n, bool left)
+{
+    u16 C = flag(TRK_C, s);
+    if (!(C & 1) || (C & 4)) return;
+    u16 F = flag(left ? TRK_L : TRK_R, s), Fn = flag(left ? TRK_L : TRK_R, s + 1), Cn = flag(TRK_C, s + 1);
+    int k = left ? 2 : 1;
+    double top = EYE - (SURFACE - EYE) / k;
+    for (int i = 0; i < n; i++) {
+        const sect *a = &p[i], *b = &p[i + 1];                  /* near, far */
+        double xa = left ? a->xol : a->xor_, xb = left ? b->xol : b->xor_;
+        quad((F & 0x10) ? 2 : 3, xa, a->y + 1, xb, b->y + 1, xb, b->ye, xa, a->ye);
+        if (F & 4)
+            quad(4, xa, a->ye + 1, xb, b->ye + 1, xb, proj_y(c, b->Pw, top), xa, proj_y(c, a->Pw, top));
+    }
+    const sect *nr = &p[0], *fr = &p[n];
+    double xn = left ? nr->xol : nr->xor_, xf = left ? fr->xol : fr->xor_;
+    if (Cn & 4) {
+        double x0 = left ? MIR_X0 - 1.0 : xn, x1 = left ? xn : 321.0;
+        ras_rect(x0, nr->ye, x1, nr->y - 1.0, 2);
+        ras_rect(x0, nr->y - 1.0, x1, nr->y, 4);
+    }
+    if (!(F & 4) || (Fn & 4)) return;
+    double h = (nr->y - nr->ye) / k, wd = fabs(xn - xf);
+    if (left) ras_rect(xn - wd, nr->ye - h, xn, nr->ye, 2);
+    else      ras_rect(xn, nr->ye - h, xn + wd, nr->ye, 2);
+}
+
+/* road_draw_band_mirror (modes 0, 1): grass, road (white finish band), or the town's sidewalks; centre dashes */
+static void mir_band(const cam *c, int s, int r, const sect *p, int n)
+{
+    u16 C = flag(TRK_C, s), L = flag(TRK_L, s), R = flag(TRK_R, s);
+    bool cross = C & 1;
+    if (cross && (C & 4)) return;
+    bool white = (C & 0x10) && c->seg0 >= 0x169;
+    for (int i = 0; i < n; i++) {
+        const sect *a = &p[i], *b = &p[i + 1];                  /* near, far */
+        if (b->y > a->y) continue;                              /* faces away */
+        if (!cross) {
+            band_quad(9, MIR_X0 - 1.0, b->xl, MIR_X0 - 1.0, a->xl, b, a);
+            band_quad(9, b->xr, 321.0, a->xr, 321.0, b, a);
+            band_quad(white ? 0x0F : 1, b->xl, b->xr, a->xl, a->xr, b, a);
+        } else {
+            if (!(L & 0x80)) band_quad(4, b->xol, b->xl, a->xol, a->xl, b, a);
+            else {
+                double mb = (b->xol + b->xl) / 2, ma = (a->xol + a->xl) / 2;
+                band_quad(4, b->xol, mb, a->xol, ma, b, a);
+                band_quad(9, mb, b->xl, ma, a->xl, b, a);
+            }
+            if (!(R & 0x80)) band_quad(4, b->xr, b->xor_, a->xr, a->xor_, b, a);
+            else {
+                double mb = (b->xor_ + b->xr) / 2, ma = (a->xor_ + a->xr) / 2;
+                band_quad(4, mb, b->xor_, ma, a->xor_, b, a);
+                band_quad(9, b->xr, mb, a->xr, ma, b, a);
+            }
+        }
+        if (C & 8) {
+            double wb = mir_dash(c, r, b->Pw), wa = mir_dash(c, r, a->Pw);
+            double cb = (b->xl + b->xr) / 2, ca = (a->xl + a->xr) / 2;
+            band_quad(4, cb - (wb + 1) / 2, cb + (wb + 1) / 2, ca - (wa + 1) / 2, ca + (wa + 1) / 2, b, a);
+        }
+    }
+}
+
+/* The original's integer row values of the mirror at boundary Pw (road_proj_x_mirror / _y_mirror themselves when
+ * comparing), else the continuous projection moved by half a pixel the way the original truncates. */
+static double mir_est_x(const cam *c, double Pw, double xw)
+{
+    double z = mir_z(c, Pw), dx = mir_dx(c, Pw);
+    if (c->compare) return road_proj_x_mirror((s16)lround(z), (s16)lround(xw), (s16)(int)lround(dx));
+    double u = (c->cx - xw) / z - dx / 4.0;
+    return 280.0 - u + 0.5 * fmin(fmax(u / 2.0, -1.0), 1.0);
+}
+
+static double mir_est_y(const cam *c, double Pw, double yw)
+{
+    double z = mir_z(c, Pw), dy = mir_dy(c, Pw);
+    if (c->compare) return road_proj_y_mirror((s16)lround(z), (s16)lround(yw), (s16)(int)lround(dy));
+    double v = dy + (yw - c->cy) / z;
+    return v - 0.5 * fmin(fmax(v / 2.0, -1.0), 1.0) + 36.0;
+}
+
+/* the banner and mirror_objects of mirror row r at its far boundary, the objects of `pass` */
+static void mir_objects(const cam *c, int r, int pass)
+{
+    int bnd = c->seg0 - r;
+    double Pw = bnd * 64.0, l, rr;
+    edges_at(bnd, &l, &rr);
+    enh_bound b = { .s = bnd - 1, .k = r, .mirror = true, .depth = (r >> 1) + 7, .depth_banner = r + 5, .fade = 1.0 };
+    b.z = 4.0 * mir_z(c, Pw);
+    b.xl = mir_est_x(c, Pw, l);
+    b.xr = mir_est_x(c, Pw, rr);
+    b.xol = mir_est_x(c, Pw, 0x5DC - c->w);
+    b.xor_ = mir_est_x(c, Pw, 0xCE4 + c->w);
+    b.xfl = mir_est_x(c, Pw, (c->w - 0x177) * -4);
+    b.xfr = mir_est_x(c, Pw, (c->w + 0x339) * 4);
+    b.y = mir_est_y(c, Pw, SURFACE);
+    b.ye = mir_est_y(c, Pw, EYE);
+    b.y16 = c->compare ? 4 * b.ye - 3 * b.y : mir_est_y(c, Pw, 1600.0);
+    /* row r - 1 (nearer); its banks: the original reads them forward (BL[seg + r - 1], RR 0ce4), the enhanced
+     * mirror behind the car at that boundary (§3.7) */
+    double Pq = c->compare ? Pw + 64.0 : fmin(Pw + 64.0, c->P - 64.0), yq = mir_est_y(c, Pq, SURFACE);
+    int sq = clampi(c->compare ? c->seg0 + r - 1 : bnd + 1, 0, TRK_N - 1);
+    double ybl = mir_est_y(c, Pq, SURFACE - TRKS(TRK_BL, sq)), ybr = mir_est_y(c, Pq, SURFACE - TRKS(TRK_BR, sq));
+    b.flat_l = c->compare ? ybl == yq : fabs(ybl - yq) < 0.5;
+    b.flat_r = c->compare ? ybr == yq : fabs(ybr - yq) < 0.5;
+    b.dash = mir_dash(c, r, Pw);
+    enh_objects(&b, c->mode, c->compare, pass);
+}
+
+/* A picture rectangle of page 2's mirror store (mirror_bg_prepare: frame 2005 at (232, 102), sky 2063 below it) at
+ * (dx, dy) logical, opaque */
+static void mir_pic(int sx, int sy, int w, int h, double dx, double dy)
+{
+    const u8 *px;
+    int iw;
+    if (enh_sheet(ds_far(DS_page2_ptr), sx, sy, w, h, &px, &iw)) ras_image(px, iw, h, dx, dy, dx + iw, dy + h, 200.0);
+}
+
+static void mirror(const cam *c0)
+{
+    cam c = *c0;
+    c.mirror = true;
+    /* mirror_draw_backdrop: the frame (rows 20..44) and its mount (rows 18, 19), then the horizon strip of the sky
+     * picture above the far row, inside the mirror's clip */
+    mir_pic(232, 104, 80, 25, 240, 20);
+    mir_pic(264, 102, 16, 2, 272, 18);
+    ras_clip(MIR_X0, MIR_Y0, 320, MIR_Y1);
+    double Pfar = 64.0 * (c.seg0 - 7);
+    mir_pic(232, 129, 80, 2, 240, proj_y(&c, Pfar, SURFACE) - 2.0);
+    bool split = !c.compare;
+    for (int r = 7; r >= 1; r--) {
+        int bnd = c.seg0 - r, s = bnd - 1;
+        double Pb = 64.0 * bnd, Pa = 64.0 * (bnd + 1);
+        if (!c.compare) Pa = fmin(Pa, c.P - 64.0);
+        if (Pa <= Pb) continue;
+        double ya = proj_y(&c, Pa, SURFACE), yb = proj_y(&c, Pb, SURFACE);
+        int n = c.compare ? 1 : clampi((int)ceil(fabs(ya - yb)), 1, 4);
+        sect p[5];
+        for (int i = 0; i <= n; i++) p[i] = section(&c, Pa + (Pb - Pa) * i / n);
+        if (split) mir_objects(&c, r, ENH_OBJ_OUT);
+        mir_walls(&c, s, p, n, true);
+        mir_walls(&c, s, p, n, false);
+        mir_band(&c, s, r, p, n);
+        mir_objects(&c, r, split ? ENH_OBJ_IN : ENH_OBJ_ALL);
+    }
+    /* mirror_finish: the frame lines (view clip) */
+    ras_clip(0, ENH_VIEW_Y0, 320, ENH_VIEW_Y1);
+    ras_rect(0xF0, MIR_Y0, 0xF1, MIR_Y1, 2);
+    ras_rect(0xF1, MIR_Y0, 0xF2, MIR_Y1, 4);
+    ras_rect(0x13E, MIR_Y0, 0x13F, MIR_Y1, 4);
+    ras_rect(0x13F, MIR_Y0, 0x140, MIR_Y1, 2);
+}
+
 /* ---------------------------------------------------------------- view */
 
 /* Compare aid (SR_ENH_COMPARE=3): the original's front rows next to the float projection of the same boundaries
- * (rows 8..14 from its row tables, rows 1..7, which the mirror projection overwrites, through road_proj_x / _y). */
+ * (rows 8..14 from its row tables, rows 1..7, which the mirror projection overwrites, through road_proj_x / _y),
+ * then the mirror's rows 0..7 from the tables. */
 void enh_road_debug_rows(const enh_view *v, FILE *f)
 {
     const enh_snap *b = v->b;
@@ -348,6 +545,15 @@ void enh_road_debug_rows(const enh_view *v, FILE *f)
         fprintf(f, "  row %2d orig xl %4d xr %4d y %3d | float xl %7.2f xr %7.2f y %6.2f\n", k,
                 road_proj_x(z, (s16)l, dx), road_proj_x(z, (s16)r, dx), road_proj_y(z, 2000, dy),
                 p.xl - XOFF, p.xr - XOFF, p.y - YOFF);
+    }
+    cam m = c;                              /* the mirror's rows 0..7: the original's tables hold them now */
+    m.mirror = true;
+    for (int k = 0; k < 8; k++) {
+        sect p = section(&m, (c.seg0 - k) * 64.0);
+        fprintf(f, "  mirror row %d orig xl %4d xr %4d xol %4d xor %4d y %3d | float xl %7.2f xr %7.2f xol %7.2f xor %7.2f"
+                " y %6.2f\n", k, DSS((u16)(DS_row_xl + 2 * k)), DSS((u16)(DS_row_xr + 2 * k)),
+                DSS((u16)(DS_row_xol + 2 * k)), DSS((u16)(DS_row_xor + 2 * k)), DSS((u16)(DS_row_y + 2 * k)),
+                p.xl - XOFF, p.xr - XOFF, p.xol - XOFF, p.xor_ - XOFF, p.y - YOFF);
     }
     for (int k = 8; k <= 14; k++) {
         double Pw = k == 14 ? c.P + (FAR_Z - 4.0) * 8.0 : (c.seg0 + k) * 64.0;
@@ -370,5 +576,6 @@ bool enh_road_render(const enh_view *v)
     };
     sky(&c);
     road(&c);
+    mirror(&c);
     return true;
 }

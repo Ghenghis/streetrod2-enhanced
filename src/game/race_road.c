@@ -1397,8 +1397,11 @@ static void mirror_objects(s16 row, s16 d)
     if (C & 0x200) scenery_draw_shape(XRp, Y, d, 1, 0x10, 0);
     if (C & 0x400) scenery_draw_shape(XRp, Y, d, 1, 0x11, 0);
     if (C & 0x800) scenery_draw_shape(XRp, Y, d, 1, 0xF, 0);
-    if ((MODE & 0x11) && sub16(DSS(DS_seg), row) == DSS(DS_starter_seg))
+    if ((MODE & 0x11) && sub16(DSS(DS_seg), row) == DSS(DS_starter_seg)) {
+        enh_layer_fg();                                                 /* ENH: passthrough (starter, S2.6) */
         starter_draw_mirror((s16)(add16(XRp, XLp) >> 1), Y, (s16)(row - 1));
+        enh_layer_bg();                                                 /* ENH: */
+    }
 }
 
 static void mulholland_extras_mirror(s16 row)
@@ -1427,12 +1430,16 @@ static void road_draw_mirror(void)
         road_draw_row_mirror();
         u16 C = fw(DS_centre_ptr, 0);
         if (!((C & 4) && (C & 1))) {
+            enh_mirror_objects_begin();                                 /* ENH: mirror objects (S2.6), else passthrough */
             if ((C & 0xF000) && !(MODE & 0x16))
                 scenery_draw_banner(XLp, XRp, (s16)(YEp * 4 - Yp * 3), Yp, (s16)(row + 5), 1, (u16)(C & 0xF000));
             if (row < 7) mirror_objects(row, (s16)((row >> 1) + 7));
+            enh_mirror_objects_end();                                   /* ENH: */
             if (!(C & 1) && MODE == 0x10) mulholland_extras_mirror(row);
         }
+        enh_layer_fg();                                                 /* ENH: passthrough (opponent, mirror) */
         if (sub16(DSS(DS_seg), row) == DSS(DS_opp_seg) && DSB(DS_racing)) opponent_draw();
+        enh_layer_bg();                                                 /* ENH: */
         if (MODE & 6) road_draw_barrier_walls(DSS(DS_rail_phase_seg), 7, row);
         row_ptrs_step();
         flag_step(2);

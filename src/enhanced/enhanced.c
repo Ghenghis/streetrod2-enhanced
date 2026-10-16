@@ -105,7 +105,8 @@ static struct {
     bool bg;                /* inside a race frame, background layer */
     bool draws_view;        /* the enhanced view is drawn over the EGA picture (S2.3: road modes 0 and 1) */
     bool draws_objects;     /* the enhanced view draws the road-side objects (S2.5: road modes 0 and 1) */
-    bool in_objects;        /* inside front_objects (enh_objects_begin .. end) */
+    bool in_objects;        /* inside front_objects (enh_objects_begin .. end) or the mirror's objects */
+    bool in_mirror;         /* inside the mirror's objects (enh_mirror_objects_begin .. end) */
     int shown_page;         /* page (1, 2) presented by road_page_flip with a frame, 0 = none */
     u8 written[2][PAGE_BYTES];  /* per race page: bit set = the original's pixel shows (§2.1) */
 } rs;
@@ -365,7 +366,7 @@ void enh_race_begin(int road_mode)
     rs.overlay = (enh.modes & mode_bit(road_mode)) != 0;
     rs.draws_view = rs.overlay && (road_mode == 0 || road_mode == 1);     /* S2.3: town, street drag race */
     rs.draws_objects = rs.draws_view;                                       /* S2.5: the same modes */
-    rs.in_objects = false;
+    rs.in_objects = rs.in_mirror = false;
     rs.bg = false;
     rs.shown_page = 0;
     memset(rs.written, 0xFF, sizeof rs.written);
@@ -434,9 +435,23 @@ void enh_objects_end(void)
     else enh_layer_bg();
 }
 
+void enh_mirror_objects_begin(void)
+{
+    if (!rs.overlay) return;
+    rs.in_mirror = true;
+    enh_objects_begin();
+}
+
+void enh_mirror_objects_end(void)
+{
+    if (!rs.overlay) return;
+    enh_objects_end();
+    rs.in_mirror = false;
+}
+
 void enh_obj_orig(int kind, int type, int x, int y, int depth, int side, int x2)
 {
-    if (compare >= 2 && rs.in_objects) enh_compare_obj(true, kind, type, depth, side, x, y, x2);
+    if (compare >= 2 && rs.in_objects) enh_compare_obj(true, kind + (rs.in_mirror ? 4 : 0), type, depth, side, x, y, x2);
 }
 
 void enh_frame_presented(int page)
@@ -483,13 +498,13 @@ bool enh_written(int page, int x, int y)
 static u32 pic[320 * 200];
 static u8 cover[(ENH_SPLIT_Y - ENH_VIEW_Y0) * 320];
 
-/* The logical pixels of the view that show the enhanced picture (§2.1): above the split, outside the mirror (the
- * original's until S2.6), not last written by the foreground on the shown page. */
+/* The logical pixels of the view that show the enhanced picture (§2.1): above the split, not last written by the
+ * foreground on the shown page (the mirror included: enh_road_render draws it, S2.6). */
 static void cover_build(int page)
 {
     for (int y = ENH_VIEW_Y0; y < ENH_SPLIT_Y; y++)
         for (int x = 0; x < 320; x++)
-            cover[(y - ENH_VIEW_Y0) * 320 + x] = !enh_mirror_px(x, y) && !enh_written(page, x, y);
+            cover[(y - ENH_VIEW_Y0) * 320 + x] = !enh_written(page, x, y);
 }
 
 bool enh_compose(bool (*ega_compose)(u32 *xrgb), u32 *out)

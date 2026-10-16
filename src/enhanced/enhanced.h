@@ -48,6 +48,9 @@ void enh_frame_presented(int page);
  * else the original's pixels show (passthrough) */
 void enh_objects_begin(void);
 void enh_objects_end(void);
+/* the same around the mirror's banner and mirror_objects (road_draw_mirror; S2.6) */
+void enh_mirror_objects_begin(void);
+void enh_mirror_objects_end(void);
 /* compare record of an original road-side object call (scenery_draw_*): kind 0 shape, 1 hydrant, 2 sign picture,
  * 3 banner; x2 = banner right edge */
 void enh_obj_orig(int kind, int type, int x, int y, int depth, int side, int x2);     /* road_page_flip, before ega_show_page: page 1 or 2 shows this frame */
