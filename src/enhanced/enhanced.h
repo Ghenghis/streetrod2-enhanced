@@ -44,6 +44,8 @@ void enh_frame_begin(void);             /* first line of road_frame: start of th
 void enh_layer_fg(void);                /* before road_fillmode_end(): the foreground layer starts */
 void enh_layer_bg(void);                /* back to the background layer (passthrough brackets) */
 void enh_frame_presented(int page);     /* road_page_flip, before ega_show_page: page 1 or 2 shows this frame */
+/* end of opponent_draw's choice: view 0 front / 1 mirror (level s >= 9), sprite level s, variant v, blitted or not */
+void enh_opp_drawn(int view, int s, int v, bool drawn);
 
 /* Written mask (ENHANCED.md §2.1), from vga_wr while enh.track: the four plane bytes at `off` before the write
  * (enh_vram_peek) and after it (enh_vram_write). */

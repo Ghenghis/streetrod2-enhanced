@@ -9,6 +9,9 @@ path is "ok" when every distinct frame of the classic run is also a frame of the
 reported as coverage). Static screens (title, menus) and race frames of the deterministic demo autopilot match exactly
 when the picture is the same. With --scaled N the Enhanced defaults run too (output 320*N x 200*N); their frames,
 sampled back to 320x200, must be faithful frames as long as the picture is the scaled EGA one (S2.1).
+With --clock the deterministic host clock (SR_ENH_COMPARE=1, ENHANCED.md §5) is checked instead: two --classic runs
+and one Enhanced run (--res-scale 4) of each path must give the same frames in the same order (the shorter run is a
+prefix: --run-ms stays wall-clock while the compare clock runs faster than real time).
 Exit code 0 only if every path is ok.
 """
 import argparse, hashlib, os, shutil, struct, subprocess, sys
@@ -37,7 +40,7 @@ def bmp_320(data, n):
     return b"".join(rows)
 
 
-def run(exe, extra, name, tag, n=1):
+def run(exe, extra, name, tag, n=1, env_extra=None, ordered=False):
     args, env_add, keys, secs = PATHS[name]
     base = os.path.join(ROOT, "work", "cc", name, tag)
     shutil.rmtree(base, ignore_errors=True)
@@ -47,14 +50,32 @@ def run(exe, extra, name, tag, n=1):
     env = dict(os.environ, SDL_VIDEO_DRIVER="dummy", SDL_AUDIO_DRIVER="dummy", SR_SEED="1",
                SR_SNAPSHOT_DIR=snap, SR_SNAPSHOT_MS="250", SR_KEYS=keys)
     env.update(env_add)
+    env.update(env_extra or {})
     subprocess.run([exe, "--game-dir", game, "--run-ms", str(secs * 1000)] + extra + args, env=env,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=secs + 60)
-    frames = {}
+    frames, seq = {}, []
     for f in sorted(os.listdir(snap)):
         if f.endswith(".bmp"):
             with open(os.path.join(snap, f), "rb") as fh:
-                frames.setdefault(hashlib.sha1(bmp_320(fh.read(), n)).hexdigest(), f)
-    return frames
+                h = hashlib.sha1(bmp_320(fh.read(), n)).hexdigest()
+            frames.setdefault(h, f)
+            seq.append(h)
+    return seq if ordered else frames
+
+
+def check_clock(a, name):
+    """SR_ENH_COMPARE=1: classic, classic again and the scaled Enhanced run give one frame sequence."""
+    env = {"SR_ENH_COMPARE": "1"}
+    runs = [run(a.enhanced, ["--classic"], name, "clock_c1", 1, env, True),
+            run(a.enhanced, ["--classic"], name, "clock_c2", 1, env, True),
+            run(a.enhanced, ["--res-scale", "4"], name, "clock_e4", 4, env, True)]
+    n = min(len(r) for r in runs)
+    same = [r[:n] == runs[0][:n] for r in runs]
+    good = n > 0 and all(same)
+    print("%-10s %-4s compare clock: %d snapshots in common (runs %s), classic repeat %s, enhanced %s"
+          % (name, "ok" if good else "FAIL", n, "/".join(str(len(r)) for r in runs),
+             "same" if same[1] else "DIFFERS", "same" if same[2] else "DIFFERS"))
+    return good
 
 
 def main():
@@ -63,8 +84,11 @@ def main():
     ap.add_argument("--faithful", default=FAITHFUL)
     ap.add_argument("--enhanced", default=ENHANCED)
     ap.add_argument("--scaled", type=int, default=0, help="also check the Enhanced defaults at --res-scale N")
+    ap.add_argument("--clock", action="store_true", help="check the deterministic compare clock instead")
     a = ap.parse_args()
     os.environ["PATH"] = r"C:\msys64\mingw64\bin" + os.pathsep + os.environ.get("PATH", "")
+    if a.clock:
+        return 0 if all([check_clock(a, name) for name in a.paths or list(PATHS)]) else 1
     ok = True
     for name in a.paths or list(PATHS):
         f = run(a.faithful, [], name, "faithful")

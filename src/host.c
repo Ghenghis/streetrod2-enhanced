@@ -34,6 +34,13 @@ static Uint64 clock_start_ns;
 static Uint64 ticks_run;
 static u32 pit_div = PIT_DIV_GAME;
 
+/* ENH: SR_ENH_COMPARE (ENHANCED.md §5): a deterministic host clock. It advances VCLOCK_STEP_NS per host_pump and
+ * jumps over every pacing wait, never sleeping, so a run is tick-identical whatever the machine's speed. */
+#define VCLOCK_STEP_NS 1000000ull
+static bool vclock;
+static Uint64 vclock_ns;
+static Uint64 clock_ns(void) { return vclock ? vclock_ns : SDL_GetTicksNS(); }   /* ENH: host clock */
+
 /* Audio: see the PC-speaker section below. */
 static void run_tick(void);
 static void audio_dump_from_env(void);
@@ -78,7 +85,9 @@ bool host_init(const char *dir, int window_scale, bool fullscreen)
     }
     audio_dump_from_env();
 
-    clock_start_ns = SDL_GetTicksNS();
+    const char *cmp = SDL_getenv("SR_ENH_COMPARE");                    /* ENH: compare clock */
+    vclock = cmp && *cmp && strcmp(cmp, "0") != 0;                     /* ENH: */
+    clock_start_ns = clock_ns();                                        /* ENH: was SDL_GetTicksNS() */
     ticks_run = 0;
     return true;
 }
@@ -122,6 +131,9 @@ static Uint64 tick_due_ns(Uint64 n)
 {
     return clock_start_ns + n * pit_div * SDL_NS_PER_SECOND / PIT_HZ;
 }
+
+uint64_t host_clock_ns(void) { return clock_ns(); }                      /* ENH: */
+uint64_t host_tick_ns(void) { return tick_due_ns(ticks_run); }          /* ENH: */
 
 void host_set_pit_divisor(u16 divisor)
 {
@@ -270,6 +282,7 @@ static void run_tick(void)
 
 static void pace_until(Uint64 due_ns)
 {
+    if (vclock) { process_events(); if (vclock_ns < due_ns) vclock_ns = due_ns; return; }   /* ENH: */
     for (;;) {
         Uint64 now = SDL_GetTicksNS();
         if (now >= due_ns) return;
@@ -390,7 +403,7 @@ static void snapshot(void)
         checked = true;
     }
     if (!dir) return;
-    Uint64 now = SDL_GetTicksNS();
+    Uint64 now = clock_ns();                                            /* ENH: was SDL_GetTicksNS() */
     if (n && now - last_ns < interval_ns) return;
     last_ns = now;
     SDL_Surface *s = SDL_CreateSurfaceFrom(frame_w, frame_h, SDL_PIXELFORMAT_XRGB8888, frame, frame_w * 4);
@@ -426,12 +439,12 @@ static struct {
     Uint64 deadline_ns;                     /* move timeout, then the release time */
 } ptr_act;
 
-static double script_seconds(void) { return (double)(SDL_GetTicksNS() - clock_start_ns) / 1e9; }
+static double script_seconds(void) { return (double)(clock_ns() - clock_start_ns) / 1e9; }   /* ENH: clock_ns */
 
 /* Returns true while an action is still running (the next script entry waits for it). */
 static bool pointer_action_step(void)
 {
-    Uint64 now = SDL_GetTicksNS();
+    Uint64 now = clock_ns();   /* ENH: clock_ns */
     if (ptr_act.phase == 1) {
         s16 cx = 0, cy = 0;
         bool known = pointer_query && pointer_query(&cx, &cy);
@@ -476,7 +489,7 @@ static const char *script_mouse(const char *p)
         p = end;
         ptr_act.button = kind == 'm' ? 0 : kind == 'c' ? 1 : 2;
         ptr_act.phase = 1;
-        ptr_act.deadline_ns = SDL_GetTicksNS() + 3 * SDL_NS_PER_SECOND;
+        ptr_act.deadline_ns = clock_ns() + 3 * SDL_NS_PER_SECOND;   /* ENH: clock_ns */
         return p;
     }
     u8 b = kind == 'l' ? 1 : 2;
@@ -485,7 +498,7 @@ static const char *script_mouse(const char *p)
     script_buttons |= b;                     /* click in place */
     ptr_act.button = b;
     ptr_act.phase = 2;
-    ptr_act.deadline_ns = SDL_GetTicksNS() + 150 * SDL_NS_PER_MS;
+    ptr_act.deadline_ns = clock_ns() + 150 * SDL_NS_PER_MS;   /* ENH: clock_ns */
     return p;
 }
 
@@ -532,11 +545,12 @@ static void scripted_keys(void)
 
 void host_pump(void)
 {
+    if (vclock) vclock_ns += VCLOCK_STEP_NS;                            /* ENH: compare clock */
     process_events();
     scripted_keys();
 
     bool worked = false;
-    Uint64 now = SDL_GetTicksNS();
+    Uint64 now = clock_ns();   /* ENH: clock_ns */
     /* at most 0.5 s of catch-up per call */
     int budget = (int)(PIT_HZ / 2 / pit_div) + 1;
     while (tick_due_ns(ticks_run + 1) <= now && budget-- > 0) {
@@ -551,14 +565,14 @@ void host_pump(void)
     if (frame_source && now - last_present_ns >= 8 * SDL_NS_PER_MS) {
         if (frame_source(frame)) {
             present();
-            last_present_ns = SDL_GetTicksNS();
+            last_present_ns = clock_ns();   /* ENH: clock_ns */
             worked = true;
         }
     }
     if (!worked) {
         Uint64 next = tick_due_ns(ticks_run + 1);
-        now = SDL_GetTicksNS();
-        if (next > now) SDL_DelayNS(SDL_min(next - now, SDL_NS_PER_MS));
+        now = clock_ns();   /* ENH: clock_ns */
+        if (next > now && !vclock) SDL_DelayNS(SDL_min(next - now, SDL_NS_PER_MS));   /* ENH: !vclock */
     }
 }
 
@@ -570,16 +584,16 @@ void host_pump(void)
 
 bool host_in_vretrace(void)
 {
-    Uint64 since = SDL_GetTicksNS() - clock_start_ns;
+    Uint64 since = clock_ns() - clock_start_ns;   /* ENH: clock_ns */
     Uint64 frame_start = since * VRETRACE_DEN / VRETRACE_NUM * VRETRACE_NUM / VRETRACE_DEN;
     return since - frame_start < VRETRACE_WINDOW_NS;
 }
 
 void host_wait_vretrace(void)
 {
-    Uint64 since = SDL_GetTicksNS() - clock_start_ns;
+    Uint64 since = clock_ns() - clock_start_ns;   /* ENH: clock_ns */
     Uint64 next = (since * VRETRACE_DEN / VRETRACE_NUM + 1) * VRETRACE_NUM / VRETRACE_DEN;
-    while (SDL_GetTicksNS() - clock_start_ns < next) host_pump();
+    while (clock_ns() - clock_start_ns < next) host_pump();   /* ENH: clock_ns */
 }
 
 

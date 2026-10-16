@@ -22,8 +22,9 @@ remove it when it is done.
 ## Status
 
 - **Done:** S0.1 (repo from the faithful port v0.1.0, created while the faithful playtests were still open),
-  S1.1 (render back-end design: `ENHANCED.md`), S2.1 (host and coverage foundation; U1 check open).
-- **Next:** S2.2 (Opus), then S2.3 (Opus, Milestone A). Your tasks: **User to-do** above.
+  S1.1 (render back-end design: `ENHANCED.md`), S2.1 (host and coverage foundation; U1 check open),
+  S2.2 (snapshots, interpolation, `SR_ENH_TRACE`, compare clock).
+- **Next:** S2.3 (Opus, Milestone A: the first enhanced picture). Your tasks: **User to-do** above.
 - Escalation rule: a subtask that fails twice on Sonnet → new Opus session with a 5-line note
   (symptom, file, what was tried). Never carry an old transcript over.
 
@@ -58,7 +59,7 @@ Design: `ENHANCED.md` (section numbers below). Stage 1 = S2.1-S2.8, stage 2 = S2
 | Id | Task | Model | Size | Status |
 |---|---|---|---|---|
 | S2.1 | Host and coverage (§2, §2.1, §6 step 1): output frame up to 2560×1600 with logical 320×200 kept for presentation and mouse, `enh_compose` in `ega.c`, written mask in `vga_wr`/`vmovedata`, background/foreground layers, race begin/end and frame hooks, options `--res-scale` `--aa` `--motion-delay` `--enh-modes`; picture = scaled EGA (no visible change); `--classic` identical | O | M | U1 pending |
-| S2.2 | Snapshots and interpolation (§3.1): snapshot ring at `road_frame`, `enh_opp_drawn`, `enh_frame_presented`, relative-heading blend, snaps; `SR_ENH_TRACE` and the deterministic compare clock (§5). Nothing drawn yet | O | M | |
+| S2.2 | Snapshots and interpolation (§3.1): snapshot ring at `road_frame`, `enh_opp_drawn`, `enh_frame_presented`, relative-heading blend, snaps; `SR_ENH_TRACE` and the deterministic compare clock (§5). Nothing drawn yet | O | M | done 2026-10-16 |
 | S2.3 | **Milestone A** (§3.2, §3.4, §3.5): float road geometry, raster with AA, resolve through the live palette, sky, for the town and the street drag race (modes 0, 1) at draw distance 14, sprites as passthrough; `SR_ENH_COMPARE`; U1 check | O | L | |
 | S2.4 | Mulholland (banks `BL/BR`, hillsides, drop-offs, guard rails, trusses, own sky) and the drag strip (modes 2/4: `L2/R2/C2`, flat, barrier walls) (§3.2) | S | M | |
 | S2.5 | Sprites (§3.6): SR2_SHP format-A shapes at continuous scale, signs, banners, opponent and police from native LIB3 pictures, start tree and starter; remove every passthrough | S | L | |
@@ -74,6 +75,16 @@ Notes:
   compose presents at the display rate only once a subtask draws the view (`rs.draws_view`, S2.3); until then it changes
   with the EGA picture, so snapshot runs stay comparable. `python tools/classic_check.py [--scaled 4]` checks `--classic`
   (and the scaled Enhanced frames) against the faithful release frame for frame on a title run and a demo drag race.
+- S2.2: `enh_frame_begin` snapshots DGROUP into a ring of 8 (`enh_internal.h` `enh_snap`; the Aqueduct and horizon values
+  the projection computes are added at `enh_layer_fg`), `enh_opp_drawn` (two hooks in `opponent_draw`) records the sprite
+  level per view. `enh_interp(now)` gives the view at now - `--motion-delay`: linear in the pair around it, the previous
+  pair's line faded in with a smoothstep (speed continuous), relative heading, positions clamped to the pair (no
+  backward step at a hard stop), snaps as §3.1 (wall bounce = `DS_wall_hit_shift` set; `DS_aq_bounce_flag` stays 1 for
+  the race). Evaluated every 8 ms in `enh_compose` while the overlay is on; S2.3 draws `view`.
+  `SR_ENH_TRACE=file|-`: `S` line per snapshot, `C` line per evaluated frame. `SR_ENH_COMPARE=1`: host clock +1 ms per
+  `host_pump`, no sleeps (`host_clock_ns`, `host_tick_ns`); `python tools/classic_check.py --clock` checks that two classic
+  runs and an Enhanced run give the same frame sequence. Demo drag race: 9.1 snapshots/s (109.9 ms), lag 110 ms, steady
+  |jerk| <= 6 sub-steps/s at ~550 sub-steps/s (the hard stop and the cam_x snap at the finish excepted), < 30 us per call.
 
 ### Phase 3 - Input and settings
 | Id | Task | Model | Size | Status |

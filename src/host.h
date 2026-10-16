@@ -26,6 +26,10 @@ void host_set_pit_divisor(u16 divisor);
 void host_set_frame_source(bool (*compose)(u32 *xrgb), int w, int h);
 /* ENH: a w x h pixel frame that stands for a logical lw x lh screen (4:3 presentation, mouse mapping). */
 void host_set_frame_source_logical(bool (*compose)(u32 *xrgb), int w, int h, int lw, int lh);
+/* ENH: the host clock (ns; SR_ENH_COMPARE=1 makes it a deterministic clock that advances 1 ms per host_pump and
+ * skips every pacing wait) and the time on that clock at which the last timer tick was due. */
+uint64_t host_clock_ns(void);
+uint64_t host_tick_ns(void);
 
 /* Runs due timer ticks (and their audio), handles window events and presents the screen when it
  * changed. Every busy-wait loop of the original (tick waits, key polls, delays) must call this.

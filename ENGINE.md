@@ -37,7 +37,8 @@ through the 25-slot table at `DS:BB8C`.
 `sr2-enhanced --game-dir Game --check` loads and verifies SR.EXE. Headless: `SDL_VIDEO_DRIVER=dummy
 SDL_AUDIO_DRIVER=dummy SR_SNAPSHOT_DIR=dir sr2-enhanced --run-ms 600` writes `snapNNNN.bmp` (also `SR_KEYS`,
 `SR_SNAPSHOT_MS`, `SR_DEBUG_RACE`, `SR_DEBUG_END`; see `host.h`). The faithful repo has `tools/sr2_smoke.py` (15 checks).
-`--classic` must give the same frames as the faithful build.
+`--classic` must give the same frames as the faithful build. Enhanced aids: `SR_ENH_TRACE=file` (snapshots and the
+interpolated view), `SR_ENH_COMPARE=1` (deterministic host clock), `tools/classic_check.py [--scaled N] [--clock]`.
 
 ## Where to hook (ENH: points)
 Race road drawing (`src/game/race_road.c`, race_render), the driver vector slots (blit / line / poly_fill) for a

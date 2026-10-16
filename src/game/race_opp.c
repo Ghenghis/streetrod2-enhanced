@@ -6,6 +6,7 @@
  * Distances in 1/64 segment (SR1 1/8); the Aqueduct (mode 8) branches call race_aq.c. */
 #include "game/race_int.h"
 #include "game/race.h"
+#include "enhanced/enhanced.h"   /* ENH: */
 
 #include "platform/platform.h"
 #include "platform/video.h"
@@ -201,6 +202,7 @@ void opponent_draw(void)
     DSS(DS_opp_sprite) = s;
     DSS(DS_opp_variant) = v;
     DSS(DS_opp_last_d) = d;
+    enh_opp_drawn(s >= 9, s, v, false);                                 /* ENH: level chosen */
     if (nodraw && !DSW(DS_opp_contact) && res != 3) return;
     FarPtr pic = ds_far(DS_opp_pic);
     s16 z = cdiv16(d, 8);
@@ -272,6 +274,7 @@ void opponent_draw(void)
     else        { if (DSS(DS_clip_xmin) != 0) { sw = 1; clip_set_view(); } }
     if (r.dx + r.w < DSS(DS_clip_xmin) || r.dx >= DSS(DS_clip_xmax)) return;     /* clip not restored (as SR1) */
     if (s >= 9) blit_clip_xy(&r); else blit_clip_y(&r);
+    enh_opp_drawn(s >= 9, s, v, true);                                  /* ENH: drawn */
     road_fillmode_end();
     if (s >= 9) bitmap_blit_masked_shift(pic, back_page(), &r, 0);
     else drv_blit_masked(pic, back_page(), &r, 1);
