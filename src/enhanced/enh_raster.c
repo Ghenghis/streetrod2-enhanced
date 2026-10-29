@@ -82,7 +82,19 @@ void ras_rect(double x0, double y0, double x1, double y1, u8 c)
 
 /* A w x h index picture stretched over [x0, x1) x [y0, y1) (logical coordinates), rows below `ymax` cut; nearest
  * texel per sample (the caller picks a picture at most one size step larger than the target, so no mips are needed). */
+static void image(const u8 *px, int w, int h, double x0, double y0, double x1, double y1, double ymax, int trans);
+
 void ras_image(const u8 *px, int w, int h, double x0, double y0, double x1, double y1, double ymax)
+{
+    image(px, w, h, x0, y0, x1, y1, ymax, -1);
+}
+
+void ras_sprite(const u8 *px, int w, int h, double x0, double y0, double x1, double y1, double ymax)
+{
+    image(px, w, h, x0, y0, x1, y1, ymax, ENH_TRANSPARENT);
+}
+
+static void image(const u8 *px, int w, int h, double x0, double y0, double x1, double y1, double ymax, int trans)
 {
     if (!rb.buf || w <= 0 || h <= 0 || x1 <= x0 || y1 <= y0) return;
     double S = rb.S, sl = x0 * S, sr = x1 * S, st = (y0 - ENH_VIEW_Y0) * S, sb = (y1 - ENH_VIEW_Y0) * S;
@@ -100,7 +112,7 @@ void ras_image(const u8 *px, int w, int h, double x0, double y0, double x1, doub
         u8 *out = rb.buf + (size_t)j * rb.w;
         for (int i = i0; i < i1; i++) {
             int u = (int)((i + 0.5 - sl) * du);
-            if (u >= 0 && u < w && t[i & 3] < rb.alpha) out[i] = src[u];
+            if (u >= 0 && u < w && t[i & 3] < rb.alpha && src[u] != trans) out[i] = src[u];
         }
     }
 }

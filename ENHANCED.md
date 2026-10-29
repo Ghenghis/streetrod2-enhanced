@@ -248,6 +248,14 @@ the sky racing across the screen when steering and slowed it to 1/8; use `SKY_SC
   match: kind, type, depth, side, anchor +-1 px); the size check measures the spans the live view would emit at the
   original's row depth against the largest LOD's height x zt / z (within 0.5 px).
 
+* **Opponent, police, start tree, starter** (S2.5 part 3, `enh_props.c`): the level the original chose selects the game's
+  own masked picture (levels 3..8 use the level-2 rear picture, 10..12 the front picture of level 9, not the shrunk
+  copies); anchor = `opponent_draw`'s placement rule with continuous values at the interpolated car position (YAW / HGT
+  at the car, mirror +10); size min(1.3, 17 / z) x native (mirror 15 / z_m), tree min(1.3, 21.7 / z) x its 56 x 87
+  picture, starter size 0. Crash / contact placement keeps the original's rect. Drawn after the row's objects and before
+  the barrier walls (row 0 last), the starter and mirror car after the mirror row's objects. Passthrough remains in the
+  aqueduct, the compare view, the Mulholland mirror (S2.6) and the starter's screen slide (a cockpit overlay).
+
 ### 3.7 Mirror
 
 The same renderer with the mirror projection, 7 rows behind, clipped to (240,22)-(319,42); background from the

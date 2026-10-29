@@ -1246,9 +1246,9 @@ static void front_objects(s16 row)
     if (C & 0x200) scenery_draw_shape(XRp, Y, row, 1, 0x10, 0);
     if (C & 0x400) scenery_draw_shape(XRp, Y, row, 1, 0x11, 0);
     if ((MODE & 6) && sub16(DSS(DS_start_seg), DSS(DS_front_row_seg)) == -4) {
-        enh_layer_fg();                                                 /* ENH: passthrough (start tree, S2.4) */
+        enh_prop_fg(false);                                             /* ENH: start tree (S2.5), else passthrough */
         road_draw_start_tree((s16)(add16(XRp, XLp) >> 1), Y, row);
-        enh_layer_bg();                                                 /* ENH: */
+        enh_prop_bg(false);                                             /* ENH: */
     }
 }
 
@@ -1295,16 +1295,16 @@ static void road_draw_front(void)
             enh_objects_end();                                          /* ENH: */
             if (!(C & 1) && MODE == 0x10) mulholland_extras_front(row);
         }
-        enh_layer_fg();                                                 /* ENH: passthrough (opponent, S2.5) */
+        enh_prop_fg(false);                                             /* ENH: opponent (S2.5), else passthrough */
         if (sub16(DSS(DS_opp_seg), row) == DSS(DS_seg) && DSB(DS_racing)) opponent_draw();
-        enh_layer_bg();                                                 /* ENH: */
+        enh_prop_bg(false);                                             /* ENH: */
         if (MODE & 6) road_draw_barrier_walls(DSS(DS_rail_phase_seg), 0xE, row);
         row_ptrs_step();
         flag_step(-2);
     }
-    enh_layer_fg();                                                     /* ENH: passthrough (opponent, S2.5) */
+    enh_prop_fg(false);                                                 /* ENH: opponent (S2.5), else passthrough */
     if (DSS(DS_seg) == DSS(DS_opp_seg) && DSB(DS_racing)) opponent_draw();
-    enh_layer_bg();                                                     /* ENH: */
+    enh_prop_bg(false);                                                 /* ENH: */
 }
 
 /* ================================================================================ mirror */
@@ -1401,9 +1401,9 @@ static void mirror_objects(s16 row, s16 d)
     if (C & 0x400) scenery_draw_shape(XRp, Y, d, 1, 0x11, 0);
     if (C & 0x800) scenery_draw_shape(XRp, Y, d, 1, 0xF, 0);
     if ((MODE & 0x11) && sub16(DSS(DS_seg), row) == DSS(DS_starter_seg)) {
-        enh_layer_fg();                                                 /* ENH: passthrough (starter, S2.6) */
+        enh_prop_fg(true);                                              /* ENH: starter (S2.5), else passthrough */
         starter_draw_mirror((s16)(add16(XRp, XLp) >> 1), Y, (s16)(row - 1));
-        enh_layer_bg();                                                 /* ENH: */
+        enh_prop_bg(true);                                              /* ENH: */
     }
 }
 
@@ -1440,9 +1440,9 @@ static void road_draw_mirror(void)
             enh_mirror_objects_end();                                   /* ENH: */
             if (!(C & 1) && MODE == 0x10) mulholland_extras_mirror(row);
         }
-        enh_layer_fg();                                                 /* ENH: passthrough (opponent, mirror) */
+        enh_prop_fg(true);                                              /* ENH: opponent in the mirror (S2.5), else passthrough */
         if (sub16(DSS(DS_seg), row) == DSS(DS_opp_seg) && DSB(DS_racing)) opponent_draw();
-        enh_layer_bg();                                                 /* ENH: */
+        enh_prop_bg(true);                                              /* ENH: */
         if (MODE & 6) road_draw_barrier_walls(DSS(DS_rail_phase_seg), 7, row);
         row_ptrs_step();
         flag_step(2);

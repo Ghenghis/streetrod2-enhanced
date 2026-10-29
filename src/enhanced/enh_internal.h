@@ -24,6 +24,8 @@ typedef struct {
     s16 opp_seg, opp_frac, opp_lat, opp_lat_step, opp_model, opp_sprite, opp_variant;
     s8 opp_s[2], opp_v[2];      /* per view (0 front, 1 mirror): sprite level / variant chosen, -1 = no call */
     bool opp_drawn[2];          /* the original blitted it */
+    bool opp_special[2];        /* placed by the crash / contact rules (res == 3, opp_contact): the original's rect */
+    s16 opp_rx[2], opp_ry[2];   /* the original's blit rect corner (r.dx - r.sx, r.dy) */
     /* police, start */
     s16 police_state, police_seg;
     s16 start_light_pos, start_lights, light_latch, starter_seg;
@@ -80,7 +82,9 @@ void ras_clip(double x0, double y0, double x1, double y1);         /* fills cut 
 void ras_alpha(double a);           /* coverage 0..1 of the following fills (screen door; ras_begin: 1) */
 void ras_resolve(const u8 pal[17], const u8 *cover, u32 *out, int res_scale, int aa);
 void ras_image(const u8 *px, int w, int h, double x0, double y0, double x1, double y1, double ymax);
-void ras_downscale(u8 *idx);       /* 320 x (ENH_VIEW_Y1 - ENH_VIEW_Y0) indices, most frequent per pixel */
+#define ENH_TRANSPARENT 0xFF
+void ras_sprite(const u8 *px, int w, int h, double x0, double y0, double x1, double y1, double ymax);   /* ras_image, index 0xFF skipped */
+void ras_downscale(u8 *idx);      /* 320 x (ENH_VIEW_Y1 - ENH_VIEW_Y0) indices, most frequent per pixel */
 u32 enh_pal_rgb(u8 attribute_reg);
 
 /* ---- road and sky (enh_road.c, §3.2, §3.5) */
@@ -107,6 +111,15 @@ void enh_objects(const enh_bound *b, int mode, bool compare, int pass);
 /* a w x h rectangle at (sx, sy) of picture / page descriptor d as palette indices (whole bytes; valid until the next
  * call); false when out of the picture */
 bool enh_sheet(FarPtr d, int sx, int sy, int w, int h, const u8 **px, int *wout);
+
+/* ---- props (enh_props.c, §3.6): the opponent / police car from its native LIB3 picture, the drag strip's start tree and
+ * the starter figure in the mirror, at continuous scale. Positions are the original's pixel anchors (continuous). */
+/* the car of snapshot b's view (0 front, 1 mirror) at anchor (sx, sy) and projection depth z (front units for the front,
+ * the mirror's own z for the mirror) */
+extern unsigned enh_prop_n[4];
+void enh_prop_car(const enh_snap *b, int view, double sx, double sy, double z);
+void enh_prop_tree(double x, double ybase, double z);       /* z: the tree's boundary depth in front units */
+void enh_prop_starter(double x, double zm);                 /* zm: the mirror depth of its boundary */
 
 /* ---- compare (enh_compare.c, §5): SR_ENH_COMPARE >= 2 */
 /* object records: kind 0 shape, 1 hydrant, 2 sign picture, 3 banner; orig = recorded from the original's calls */

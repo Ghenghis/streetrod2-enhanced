@@ -269,13 +269,13 @@ void opponent_draw(void)
             else if (r.dx >= 0x13F)  { r.dx = 0x12B;             r.dy = (s16)(0x69 - r.h); }
         }
     }
+    enh_opp_place(s >= 9, r.dx - r.sx, r.dy, res == 3 || DSW(DS_opp_contact));   /* ENH: the original's rect, unclipped */
     s16 sw = 0;
     if (s >= 9) { if (DSS(DS_clip_xmin) == 0) { sw = 1; clip_set_mirror(); } }
     else        { if (DSS(DS_clip_xmin) != 0) { sw = 1; clip_set_view(); } }
     if (r.dx + r.w < DSS(DS_clip_xmin) || r.dx >= DSS(DS_clip_xmax)) return;     /* clip not restored (as SR1) */
     if (s >= 9) blit_clip_xy(&r); else blit_clip_y(&r);
-    enh_opp_drawn(s >= 9, s, v, true);                                  /* ENH: drawn */
-    road_fillmode_end();
+    enh_opp_drawn(s >= 9, s, v, true);                                  /* ENH: drawn */    road_fillmode_end();
     if (s >= 9) bitmap_blit_masked_shift(pic, back_page(), &r, 0);
     else drv_blit_masked(pic, back_page(), &r, 1);
     road_fillmode_begin();

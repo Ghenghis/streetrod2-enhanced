@@ -3,8 +3,8 @@
  * --draw-distance-scale times the original draw distance (14 segments; default 1.25 = 17.5, §4). The road is projected in float with the formulas of road_proj_x / road_proj_y (race_road.c) at the
  * interpolated view, each segment cut into slices so that YAW / HGT / edges vary continuously, and emitted far to
  * near in the original's painter's order (road_draw_front: town walls, then the band of each row, then the row's
- * road-side objects, enh_sprite.c, S2.5). The opponent is the original's pixels (passthrough brackets in
- * road_draw_front and road_draw_mirror). The mirror (S2.6, §3.7) is the same renderer with road_proj_x_mirror /
+ * road-side objects, enh_sprite.c, S2.5). The opponent / police car, the drag strip's start tree and the starter
+ * are drawn from their native pictures (enh_props.c, S2.5). The mirror (S2.6, §3.7) is the same renderer with road_proj_x_mirror /
  * road_proj_y_mirror (1/4 of the front's scale, centre 280, 36), 7 rows behind, clipped to (240, 22)-(319, 42), over
  * the original's backdrop pictures; frame lines redrawn.
  *
@@ -56,6 +56,8 @@ typedef struct {
     int synth;
     int fall_dir;               /* DS_fall_dir: -1, 0, 1 (the hillsides' side offset, Mulholland) */
     bool l16;                   /* Mulholland: a bridge ends within rows 10..14 (front_hillsides' free-standing peaks) */
+    const enh_snap *snap;       /* the newer snapshot: the car's level, the starter's segment */
+    double O, lat;              /* the car: position in sub-steps, lateral position (interpolated) */
 } cam;
 
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
@@ -486,6 +488,50 @@ static void objects(const cam *c, int s, int pass)
     enh_objects(&b, c->mode, c->compare, pass);
 }
 
+/* ---------------------------------------------------------------- props (S2.5, enh_props.c) */
+
+/* The car of the front view (levels 0..8) at the interpolated position O: the original's anchor (opponent_draw: z =
+ * |d / 8| + 4, road_proj_x / _y with the YAW / HGT at the car), continuous. Not in the compare view (the original's
+ * pixels stay there) and not on the drag strip's mode 2 (no opponent). */
+static void car_front(const cam *c)
+{
+    const enh_snap *b = c->snap;
+    int s = b->opp_s[0];
+    if (c->compare || c->mode == 2 || !c->racing || !b->opp_drawn[0] || s < 0 || s > 8) return;
+    double z8 = (c->O - c->P) / 8.0;
+    if (s == 0) z8 += 16.0;
+    if (z8 < -2.0 && s == 2) z8 += 8.0;
+    double z = fabs(z8) + 4.0;
+    double dx = c->heading - enh_track_yaw(c->O), dy = (c->mode & 6) ? 0.0 : c->hgt - enh_track_hgt(c->O);
+    double sx = 160.0 + dx - 4.0 * (c->cx - c->lat) / z;
+    double sy = 2.0 * dy + 4.0 * (SURFACE + b->floor_h - c->cy) / z + c->bounce + 60.0;
+    enh_prop_car(b, 0, sx, sy, z);
+}
+
+/* The car of the mirror (levels 9..12): road_proj_x_mirror / _y_mirror with the original's +10 on the heading term. */
+static void car_mirror(const cam *c)
+{
+    const enh_snap *b = c->snap;
+    int s = b->opp_s[1];
+    if (c->compare || c->mode == 2 || !c->racing || !b->opp_drawn[1] || s < 9 || s > 12) return;
+    double zm = fmax((c->P - c->O) / 8.0, 1.0);
+    double dx = 10.0 + enh_track_yaw(c->O) - c->heading, dy = (c->mode & 6) ? 0.0 : enh_track_hgt(c->O) - c->hgt;
+    double sx = 280.0 + dx / 4.0 - (c->cx - c->lat) / zm;
+    double sy = 36.0 + dy + (SURFACE + b->floor_h - c->cy) / zm;
+    enh_prop_car(b, 1, sx, sy, zm);
+}
+
+/* the drag strip's start tree: 4 segments past the start line, centred between the road edges of that boundary */
+static void tree(const cam *c, int s)
+{
+    if (c->compare || s != c->start_seg + 4 || !(c->mode & 6)) return;
+    double Pw = s * 64.0, l, r, z = (Pw - c->P) / 8.0 + 4.0;
+    edges_at(c, s, &l, &r);
+    ras_alpha(fmin(fmax((c->far_z - z) / 8.0, 0.0), 1.0));
+    enh_prop_tree(floor((est_x(c, Pw, l) + est_x(c, Pw, r)) / 2.0), est_y(c, Pw, SURFACE), z);
+    ras_alpha(1.0);
+}
+
 /* One segment s (band kband of the original) between Pa (near) and Pb (far), in slices. */
 static void segment(const cam *c, int s, int kband, double Pa, double Pb)
 {
@@ -507,7 +553,9 @@ static void segment(const cam *c, int s, int kband, double Pa, double Pb)
     band(c, s, kband, p, n);
     if (split) ras_clip(0, ENH_VIEW_Y0, 320, ENH_VIEW_Y1);
     objects(c, s, split ? ENH_OBJ_IN : ENH_OBJ_ALL);
+    tree(c, s);
     if (c->mode == 0x10) extras(c, s, kband, p, n);
+    if (s == (int)floor(c->O / 64.0)) car_front(c);                 /* after the row's objects, before the barrier walls */
     if (c->mode & 6) barriers(c, s, p, n);
 }
 
@@ -526,6 +574,7 @@ static void road(const cam *c)
         double Pa = fmax((s - 1) * 64.0, Pnear), Pb = s == s_end ? Pfar : fmin(s * 64.0, Pfar);
         if (Pb > Pa) segment(c, s, s - c->seg0, Pa, Pb);
     }
+    if ((int)floor(c->O / 64.0) <= c->seg0) car_front(c);          /* the car at row 0 is drawn last */
 }
 
 /* ---------------------------------------------------------------- sky (road_draw_sky) */
@@ -781,6 +830,12 @@ static void mirror(const cam *c0)
         mir_walls(&c, s, p, n, false);
         mir_band(&c, s, r, p, n);
         mir_objects(&c, r, split ? ENH_OBJ_IN : ENH_OBJ_ALL);
+        if (!c.compare && c.mode == 1 && r < 7 && bnd == c.snap->starter_seg && !DSW(DS_start_active)) {
+            double l, rr, Pw = 64.0 * bnd;                      /* starter_draw_mirror: centred on the road of the boundary */
+            edges_at(&c, bnd, &l, &rr);
+            enh_prop_starter(floor((mir_est_x(&c, Pw, l) + mir_est_x(&c, Pw, rr)) / 2.0), mir_z(&c, Pw));
+        }
+        if (bnd == (int)floor(c.O / 64.0) || (r == 1 && bnd < (int)floor(c.O / 64.0))) car_mirror(&c);
         if (c.mode & 6) {                                       /* barrier walls: the stripe index runs with seg + r (sic) */
             u8 col = abs(7 - r - c.seg0 + c.start_seg) % 10 < 5 ? 0x0B : 4;
             for (int i = 0; i < n; i++) {
@@ -808,6 +863,7 @@ static cam cam_of(const enh_view *v)
         .bounce = v->bounce_y, .mode = b->mode, .seg0 = (int)floor(v->P / 64.0), .racing = b->racing != 0,
         .compare = v->compare, .start_seg = b->start_seg, .w = b->mode == 0x10 ? 200 : 400,
         .far_z = 4.0 + (FAR_Z - 4.0) * enh.draw_scale, .rows = v->rows, .synth = INT_MAX, .fall_dir = b->fall_dir,
+        .snap = b, .O = v->O, .lat = v->opp_lat,
     };
     if (c.mode == 0x10)                                         /* front_hillsides: a bridge ends within rows 10..14 */
         for (int k = 14; k > 9; k--)

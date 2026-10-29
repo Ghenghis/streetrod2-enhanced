@@ -412,7 +412,7 @@ static void mirror(const ctx *c)
     if (C & 0x200) SHAPE(b->xr, 1, 0x10, false, IN);
     if (C & 0x400) SHAPE(b->xr, 1, 0x11, false, IN);
     if (C & 0x800) SHAPE(b->xr, 1, 0xF, false, IN);
-    /* the starter (modes & 0x11) stays the original's pixels: a passthrough bracket in mirror_objects */
+    /* the starter (mode 1) is drawn by enh_props.c from enh_road.c's mirror() */
 #undef SHAPE
 }
 

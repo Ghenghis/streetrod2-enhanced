@@ -58,6 +58,12 @@ void enh_mirror_objects_end(void);
 void enh_obj_orig(int kind, int type, int x, int y, int depth, int side, int x2);     /* road_page_flip, before ega_show_page: page 1 or 2 shows this frame */
 /* end of opponent_draw's choice: view 0 front / 1 mirror (level s >= 9), sprite level s, variant v, blitted or not */
 void enh_opp_drawn(int view, int s, int v, bool drawn);
+/* the original's blit rect corner of the car just chosen (r.dx - r.sx, r.dy) and whether the crash / contact rules placed it */
+void enh_opp_place(int view, int rx, int ry, bool special);
+/* around the car, the start tree and the starter figure of the mirror (S2.5): the enhanced view draws them where it draws
+ * the view, else the original's pixels show (passthrough); mirror: the bracket is in the mirror */
+void enh_prop_fg(bool mirror);
+void enh_prop_bg(bool mirror);
 
 /* Written mask (ENHANCED.md §2.1), from vga_wr while enh.track: the four plane bytes at `off` before the write
  * (enh_vram_peek) and after it (enh_vram_write). */

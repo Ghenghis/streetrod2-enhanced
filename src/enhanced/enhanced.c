@@ -458,6 +458,8 @@ void enh_race_end(void)
     if (trace && rstat.n)
         fprintf(trace, "# render %llu frames, mean %.3f ms, max %.3f ms (%dx%d, aa %d)\n", (unsigned long long)rstat.n,
                 rstat.sum / 1e6 / rstat.n, rstat.max / 1e6, 320 * enh.res_scale, 200 * enh.res_scale, enh.aa);
+    if (trace) fprintf(trace, "# props drawn: front car %u, mirror car %u, tree %u, starter %u\n", enh_prop_n[0], enh_prop_n[1], enh_prop_n[2], enh_prop_n[3]);
+    memset(enh_prop_n, 0, sizeof enh_prop_n);
     memset(&rstat, 0, sizeof rstat);
     if (trace) fflush(trace);
     rs.hold = rs.overlay && rs.draws_view && rs.rendered && rs.shown_page;
@@ -497,6 +499,29 @@ void enh_opp_drawn(int view_id, int s, int v, bool drawn)
     n->opp_drawn[view_id] = drawn;
 }
 void enh_layer_bg(void) { if (rs.overlay) rs.bg = true; }
+
+void enh_opp_place(int view_id, int rx, int ry, bool special)
+{
+    if (!rs.overlay || !ring.n || view_id < 0 || view_id > 1) return;
+    enh_snap *n = snap_at(0);
+    n->opp_rx[view_id] = (s16)rx;
+    n->opp_ry[view_id] = (s16)ry;
+    n->opp_special[view_id] = special;
+}
+
+/* The car, the start tree and the starter (S2.5): drawn by the enhanced view where it draws the view (not in the
+ * compare view, which keeps the original's pixels; not in the Mulholland mirror, S2.6), else a passthrough bracket. */
+static bool prop_native(bool mirror) { return rs.draws_view && compare < 2 && !(mirror && rs.mirror_native); }
+
+void enh_prop_fg(bool mirror)
+{
+    if (rs.overlay && !prop_native(mirror)) enh_layer_fg();
+}
+
+void enh_prop_bg(bool mirror)
+{
+    if (rs.overlay && !prop_native(mirror)) enh_layer_bg();
+}
 
 /* front_objects: drawn by the enhanced renderer (the original's pixels are background, the enhanced view owns them),
  * or a passthrough bracket in the modes whose objects are not enhanced yet. */
