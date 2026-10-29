@@ -1245,8 +1245,11 @@ static void front_objects(s16 row)
     if (C & 0x800) scenery_draw_shape(XRp, Y, row, 1, 0xF, 0);
     if (C & 0x200) scenery_draw_shape(XRp, Y, row, 1, 0x10, 0);
     if (C & 0x400) scenery_draw_shape(XRp, Y, row, 1, 0x11, 0);
-    if ((MODE & 6) && sub16(DSS(DS_start_seg), DSS(DS_front_row_seg)) == -4)
+    if ((MODE & 6) && sub16(DSS(DS_start_seg), DSS(DS_front_row_seg)) == -4) {
+        enh_layer_fg();                                                 /* ENH: passthrough (start tree, S2.4) */
         road_draw_start_tree((s16)(add16(XRp, XLp) >> 1), Y, row);
+        enh_layer_bg();                                                 /* ENH: */
+    }
 }
 
 static void mulholland_extras_front(s16 row)

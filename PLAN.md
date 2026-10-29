@@ -18,6 +18,7 @@ remove it when it is done.
 | U1 | S2.1: run `build\sr2-enhanced.exe` (Enhanced defaults, 1280x800 frame) next to `build\sr2-enhanced.exe --classic`: menus, garage, one race. The picture must look the same in both, the mouse pointer must follow the mouse in menus and the garage, Alt+Enter full screen fine | S2.1 | 10 min |
 | U1 | S2.3 + S2.5 + S2.6 (town and street drag race): run `build\sr2-enhanced.exe` next to `build\sr2-enhanced.exe --classic`; drive in town (cruise to Burger's) and race a street drag race. In Enhanced the road, kerbs, sidewalks, building walls and sky must be sharp (no stair steps) and move smoothly between the game's frames, at the same place as in classic; the sky turns slower when steering (1/8). **Objects** (trees, lamp posts, road signs, hydrants, location signs, billboards, banners): since your S2.5 feedback each is drawn from its largest picture only and scaled by true perspective, so look that they **grow smoothly and slowly** as you approach, with **no size steps** (no LOD changes), the same size as classic when near (rows where classic shows its biggest picture), smaller than classic's jumps would suggest in the middle distance, and that they now appear at the far end of the road (fading in) instead of popping in halfway; trees stand behind the buildings. **Mirror**: now drawn by Enhanced too: sharp road, walls, trees and banners in it, the same view as classic, moving smoothly, frame lines crisp; the opponent / police car and the starter in the mirror are still classic pixels (later subtask). Report anything misplaced, flickering, popping or too big | S2.3, S2.5, S2.6 | 15 min |
 | U1 | S2.9 part 1 (draw distance x1.25, town and street drag race): run `build\sr2-enhanced.exe` (default 1.25) next to `build\sr2-enhanced.exe --draw-distance-scale 1` (the original distance) and `--classic`. Look at: the road, walls and kerbs now reach about 25 % further (17.5 instead of 14 segments) with **no popping at the far edge** (objects fade in over the last segment, nothing appears suddenly), **no road over the sky** (the far road ends just below the horizon panorama / the town's rooftop panorama, also when the car bounces; only crests may rise above it), objects stand on the road's far part and never float beyond its end; **town ends sane** (cruise to Burger's: the street ahead shows only town blocks, no race road); **drag race after the finish** (fixed after your playtest of f1d3127): past the finish line plain road with centre dashes and no trees / signs, now following the course's hill exactly as the original does, so an **opponent waiting past the finish stands on the road** (not in the air); and **after the race stops** (the last second before the result boxes, and behind the boxes) the picture stays the enhanced one: **no revert to the old low-res road / hill**; the boxes themselves are classic pixels. Also check the end of a town cruise (arrival) the same way. The mirror is unchanged | S2.9 | 10 min |
+| U1 | S2.4 (Mulholland and the drag strip): run `build\sr2-enhanced.exe` next to `build\sr2-enhanced.exe --classic`. **Mulholland Drive race**: sharp road, white finish band, centre dashes; the **hillsides** (yellow banks) beside the road and the **drop-offs** where the road has a cliff edge, the **guard rails** (posts every other segment) and the **truss bridges** (bridge frames: posts, top bar, diagonals) must be at the same places as in classic and move smoothly, no stair steps; the sky/mountains turn slowly when steering (1/8) and shift a little with hills; bushes, rocks and obstacles (the 0x14 ones) grow smoothly, no size steps; while driving over a hill crest nothing flickers. **The mirror in Mulholland is still the classic picture** (later subtask). **Drag strip (Grudge Night, qualifier and rounds)**: flat road with the **barrier walls** (red / cyan stripes of 5 segments) along both sides moving smoothly, the wide start dashes, start tree (classic pixels for now: it may lag a few pixels behind the interpolated road) and starter, the opponent (classic pixels), mirror drawn by Enhanced with the walls. Report anything misplaced, missing, flickering or ugly | S2.4 | 15 min |
 | U3 | Decisions (defaults apply if unanswered), see U3 below | plan | 5 min |
 | U2 | The faithful playtests (U6 in `../StreetRod2/PLAN.md`) are still open. Bugs found there are fixed in the faithful repo first (S5.6) and ported here by hand | engine | - |
 
@@ -30,7 +31,7 @@ remove it when it is done.
   forward on the user's S2.3 playtest; since the S2.5 playtest the largest LOD only at true 1/z; the rest of S2.5 after
   S2.4), S2.6 for modes 0 and 1 (enhanced mirror, town cruise checked; U1 check open), the modes 0 and 1 part of
   S2.9 (draw distance x1.25 = 17.5 segments, `--draw-distance-scale`, on the user's request; U1 check open).
-- **Next:** S2.4 (Sonnet: Mulholland and the drag strip). Your tasks: **User to-do** above (the S2.3 + S2.5 + S2.6 + S2.9 U1 check first).
+- **Next:** S2.4 is done (U1 check pending); remaining Phase 2: the rest of S2.5/S2.6 (Mulholland mirror, opponent, police, start tree, starter), S2.9 table ends. Your tasks: **User to-do** above (S2.3 + S2.5 + S2.6 + S2.9 U1 checks first).
 - Escalation rule: a subtask that fails twice on Sonnet → new Opus session with a 5-line note
   (symptom, file, what was tried). Never carry an old transcript over.
 
@@ -67,7 +68,7 @@ Design: `ENHANCED.md` (section numbers below). Stage 1 = S2.1-S2.8, stage 2 = S2
 | S2.1 | Host and coverage (§2, §2.1, §6 step 1): output frame up to 2560×1600 with logical 320×200 kept for presentation and mouse, `enh_compose` in `ega.c`, written mask in `vga_wr`/`vmovedata`, background/foreground layers, race begin/end and frame hooks, options `--res-scale` `--aa` `--motion-delay` `--enh-modes`; picture = scaled EGA (no visible change); `--classic` identical | O | M | U1 pending |
 | S2.2 | Snapshots and interpolation (§3.1): snapshot ring at `road_frame`, `enh_opp_drawn`, `enh_frame_presented`, relative-heading blend, snaps; `SR_ENH_TRACE` and the deterministic compare clock (§5). Nothing drawn yet | O | M | done 2026-10-16 |
 | S2.3 | **Milestone A** (§3.2, §3.4, §3.5): float road geometry, raster with AA, resolve through the live palette, sky, for the town and the street drag race (modes 0, 1) at draw distance 14, sprites as passthrough; `SR_ENH_COMPARE`; U1 check | O | L | U1 pending |
-| S2.4 | Mulholland (banks `BL/BR`, hillsides, drop-offs, guard rails, trusses, own sky) and the drag strip (modes 2/4: `L2/R2/C2`, flat, barrier walls) (§3.2) | S | M | |
+| S2.4 | Mulholland (banks `BL/BR`, hillsides, drop-offs, guard rails, trusses, own sky) and the drag strip (modes 2/4: `L2/R2/C2`, flat, barrier walls) (§3.2) | S | M done 2026-10-29, U1 pending |
 | S2.5 | Sprites (§3.6): SR2_SHP format-A shapes at continuous scale, signs, banners, opponent and police from native LIB3 pictures, start tree and starter; remove every passthrough | S | L | modes 0, 1 objects done 2026-10-16, largest LOD + true 1/z 2026-10-16 (U1 pending); rest open |
 | S2.6 | Mirror (§3.7) and the town cruise check (§3.8) | S | M | modes 0, 1 done 2026-10-16 (U1 pending); opponent / starter in the mirror passthrough |
 | S2.7 | Aqueduct, mode 8 (§3.3): channel geometry, walls and openings, boxes, pillars, format-B shapes, float roll, rotated opponent, night sky | O | L | |
@@ -178,6 +179,27 @@ Notes:
   far road), the other modes' table ends (Mulholland past 0x3DD, drag strip past 0x58, Aqueduct past 0x156) once
   S2.4 draws them, the town end beyond scale 1.7 (a closing view instead of the clamp), opponent and police at
   distance, haze, mirror distance, cost at N = 60 / 120.
+- S2.4 (2026-10-29): the drag strip (modes 2, 4) and Mulholland (mode 0x10) are drawn by the enhanced view (`rs.draws_view`
+  for every mode but the Aqueduct). Strip: `enh_flag` reads L2 / R2 / C2 at the segment, YAW / HGT / BL / BR / LANE at
+  seg + 0xC0 (`enh_toff`, also in `enhanced.c` `trk`), flat, barrier walls (stripes of 5 segments, front and mirror: the mirror's
+  stripe index runs with seg + row as the original's), wide start dashes, objects through the existing `front()` /
+  `mirror()` (modes flags were already in it). Mulholland: `sky_mulholland` (page-1 picture from row 0x6E - dy, dy = height
+  over HGT four segments back, clamped, scroll at 1/8; the compare view uses the original's whole-byte 2 px scroll),
+  `hill_side` re-makes `front_hillsides` (both branches incl. the bridge-end polygons and the free-standing peaks when a
+  bridge ends in rows 10..14 = `l16`) per slice with the hill tables DS:7E1E.. read at the continuous row (`tabv`),
+  verge strips (colour 2), ground (9) only beside flat banks, guard rails (post on every other segment, rail wall with
+  edge lines), trusses and truss ends (colour 10, `dash + 1` px thick), white finish band from segment 0x3AD, bush groups,
+  rocks and obstacle 0x14 in `enh_sprite.c`, outer-band objects only on flat banks. Passthrough (original pixels, may lag
+  the interpolated road): the start tree (`ENH:` hook in `front_objects`), the opponent / police / starter as before and
+  the whole **Mulholland mirror** (`rs.mirror_native`: those pixels are never covered, also in the end-of-race hold). Compare tool now
+  runs every mode (`enh_compare_frame` for all draws_view modes; `enh_road_debug_rows` also prints flags and banks): at
+  `--draw-distance-scale 1` strip 99.2 % edge match, all object calls and sizes matched; Mulholland front 97.1 % (30 of
+  969 frames below 92 %, worst around seg 409-411 and 429-431; its mirror object calls are unmatched by design, native
+  mirror). Render per displayed frame at 1280x800 2x2, idle: strip 7-8 ms, Mulholland 17.4 ms mean (34 max; the big hill
+  polygons: candidate for a cheaper fill). Identity: `--classic --check`, `classic_check.py` plain (once a wall-clock
+  divergence, ok on rerun) and `--clock` ok. Open: Mulholland mirror (S2.6), start tree / opponent natively (S2.5), table ends
+  past the course for Mulholland (0x3DD) and the strip (0x58) at the extended distance (S2.9), the strip's `top_band_row`
+  culling nuances.
 
 ### Phase 3 - Input and settings
 | Id | Task | Model | Size | Status |

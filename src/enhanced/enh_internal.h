@@ -55,6 +55,12 @@ typedef struct {
     int rows;                   /* compare aid: front segments drawn, seg + 1 .. seg + rows (0 = all, -1 = none) */
 } enh_view;
 
+/* index offset of YAW / HGT / BL / BR / LANE in this race (0xC0 on the drag strip, whose L2 / R2 / C2 flags are read at
+ * the segment itself) and the track reads of the enhanced renderer, clamped to the arrays (S2.4) */
+extern int enh_toff;
+u16 enh_flag(u16 arr, int s);           /* TRK_L / TRK_R / TRK_C (L2 / R2 / C2 on the strip) and TRK_LANE at segment s */
+s16 enh_bank(u16 arr, int s);           /* TRK_BL / TRK_BR at boundary s */
+
 /* YAW / HGT at a continuous position P (sub-steps), linear between segments; indices clamped to the track (§1). */
 double enh_track_yaw(double P);
 double enh_track_hgt(double P);

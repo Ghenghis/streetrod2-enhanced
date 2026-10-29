@@ -220,7 +220,37 @@ static void banner(const ctx *c, u16 flags, bool cross)
 
 /* ---------------------------------------------------------------- front_objects (race_road.c), modes 0 and 1 */
 
-static u16 flag(u16 arr, int s) { return TRKW(arr, clampi(s, 0, TRK_N - 1)); }
+static u16 flag(u16 arr, int s) { return enh_flag(arr, s); }
+
+/* scenery_draw_bush_group (Mulholland L / R & 0x10): five shapes placed from the row-indexed tables DS_bush_group_hw
+ * (half width W, height H) and DS_bush_group_dx (A, B2), here read at the continuous row depth; the first rows are
+ * pushed outwards by 100 / 40 / 10 px */
+static double bush_tab(u16 base, int idx, double d)
+{
+    d = d < 0 ? 0 : d > 12 ? 12 : d;
+    int i = (int)floor(d), j = i < 12 ? i + 1 : 12;
+    double f = d - i;
+    s16 a = DSS((u16)(base + 4 * i + idx)), b = DSS((u16)(base + 4 * j + idx));
+    return a + (b - a) * f;
+}
+
+static void bush_group(const ctx *c, double x, int side)
+{
+    const enh_bound *b = c->b;
+    double df = c->compare ? b->depth : (b->z - 4.0) / 8.0, Y = b->y;
+    int d = b->depth;
+    static const double OFS[4] = { 100, 40, 10, 0 };
+    double dd = df < 0 ? 0 : df > 3 ? 3 : df, ofs = c->compare ? (d >= 0 && d <= 2 ? OFS[d] : 0) : OFS[(int)dd] + (OFS[(int)dd + (dd < 3)] - OFS[(int)dd]) * (dd - floor(dd));
+    x += side * ofs;
+    double W = bush_tab(DS_bush_group_hw, 2, df), H = bush_tab(DS_bush_group_hw, 0, df);
+    double A = bush_tab(DS_bush_group_dx, 0, df), B2 = bush_tab(DS_bush_group_dx, 2, df + 2);
+    if (c->compare) { W = (int)W; H = (int)H; A = (int)A; B2 = (int)B2; }
+    shape(c, x, Y, d, 0, side, 8, true, 6, false, 0);
+    shape(c, W * side + x, Y, d, 0, side, 7, true, 6, false, 0);
+    shape(c, (W + A) * side + x, Y, d, 0, side, 8, true, 6, false, 0);
+    shape(c, floor(W / 2) * side + x, Y - H, d, 2, side, 7, true, 6, false, 0);
+    shape(c, (floor(W / 2) + B2) * side + x, Y - H, d, 2, side, 8, true, 6, false, 0);
+}
 
 static void front(const ctx *c)
 {
@@ -236,8 +266,10 @@ static void front(const ctx *c)
     if (M != 0x10 && (L & 0x20) && cpu > 3) SHAPE(b->xl, 0, -1, 0, false, IN);
     if (L & 0x100) {
         if (cross) SHAPE(b->xl, 0, -1, 4, true, IN);
-        else if (L & 0x200) SHAPE(2 * b->xol - b->xl, 2, -1, t, true, OUT);
-        else SHAPE(b->xol, 0, -1, t, true, OUT);
+        else if (!(M == 0x10 && !b->flat_l)) {
+            if (L & 0x200) SHAPE(2 * b->xol - b->xl, 2, -1, t, true, OUT);
+            else SHAPE(b->xol, 0, -1, t, true, OUT);
+        }
     }
     if (!(M & 7) && (L & 0x800)) SHAPE(b->xl, 0, 1, 3, false, IN);
     if (!(M & 7) && (L & 0x1000)) SHAPE(b->xl, 0, 1, 6, false, IN);
@@ -245,6 +277,7 @@ static void front(const ctx *c)
         if (!cross) { if (b->flat_l) SHAPE(b->xl, 0, 1, 1, true, IN); }
         else sign(c, b->xl, half(c, Y + b->ye), b->depth, 1, 1, IN);
     }
+    if (M == 0x10 && (L & 0x10)) bush_group(c, b->xl, 1);
     if (cpu > 3) {
         if ((M & 7) || b->flat_l) {
             if (L & 0x40) SHAPE(b->xol, 0, -1, 0xA, false, OUT);
@@ -283,8 +316,10 @@ static void front(const ctx *c)
     if (M != 0x10 && (R & 0x20)) SHAPE(b->xr, 0, 1, 0, false, IN);
     if (R & 0x100) {
         if (cross) SHAPE(b->xr, 0, 1, 4, true, IN);
-        else if (R & 0x200) SHAPE(2 * b->xor_ - b->xr, 3, 1, t, true, OUT);
-        else SHAPE(b->xor_, 0, 1, t, true, OUT);
+        else if (!(M == 0x10 && !b->flat_r)) {
+            if (R & 0x200) SHAPE(2 * b->xor_ - b->xr, 3, 1, t, true, OUT);
+            else SHAPE(b->xor_, 0, 1, t, true, OUT);
+        }
     }
     if (R & 0x2000) SHAPE(b->xr, 0, 1, 0x12, false, IN);
     if (R & 0x4000) SHAPE(b->xr, 0, 1, 0x13, false, IN);
@@ -293,6 +328,13 @@ static void front(const ctx *c)
     if (!(M & 6) && (R & 1)) {
         if (!cross) { if (b->flat_r) SHAPE(b->xr, 0, -1, 1, true, IN); }
         else sign(c, b->xr, half(c, Y + b->ye), b->depth, -1, 1, IN);
+    }
+    if (M == 0x10 && (R & 0x10)) bush_group(c, b->xr, -1);
+    if (M == 0x10 && (C & 0x1004)) {      /* the rock (C & 4) and obstacle 0x14 (C & 0x1000): lane x6 of 16 */
+        int x6 = (s16)flag(TRK_LANE, s);
+        double xs = (compare ? floor((s16)(x6 * (int)(b->xr - b->xl)) / 16.0) : x6 * (b->xr - b->xl) / 16.0) + b->xl;
+        if (C & 4) SHAPE(xs, 0, x6 < 9 ? -1 : 1, 7, true, IN);
+        if (C & 0x1000) SHAPE(xs, 0, x6 < 9 ? -1 : 1, 0x14, true, IN);
     }
     if ((C & 0xF000) && !(M & 0x16) && drawn(c, IN)) banner(c, (u16)(C & 0xF000), cross);
     if (C & 0x100) SHAPE(b->xr, 0, 1, 5, false, IN);

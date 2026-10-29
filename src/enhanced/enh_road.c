@@ -8,6 +8,10 @@
  * road_proj_y_mirror (1/4 of the front's scale, centre 280, 36), 7 rows behind, clipped to (240, 22)-(319, 42), over
  * the original's backdrop pictures; frame lines redrawn.
  *
+ * S2.4 adds the drag strip (modes 2, 4: flags L2 / R2 / C2, YAW / HGT / banks at seg + 0xC0, flat, barrier walls) and
+ * Mulholland (mode 0x10: banks BL / BR, hillsides, verges, guard rails, trusses, its own sky, outer band 200); their
+ * mirror stays the original's pixels except on the strip (S2.6 open for Mulholland).
+ *
  * World: a position Pw along the road in sub-steps (64 per segment), lateral x and height y in road units (road
  * 0x5DC..0xCE4, surface y 2000, eye 0x76C). Depth z = (Pw - P) / 8 + 4, so segment seg + k lies at the original's row
  * depth 8k + 4 - substep / 8 (without the original's truncation of substep / 8; the compare quantizes P). Row 0
@@ -50,10 +54,33 @@ typedef struct {
     int rows;                   /* enh_view.rows (compare aid) */
     /* stage 2 table ends (ENHANCED.md §4 item 2), live view only: segments from `synth` on are plain road (no objects) */
     int synth;
+    int fall_dir;               /* DS_fall_dir: -1, 0, 1 (the hillsides' side offset, Mulholland) */
+    bool l16;                   /* Mulholland: a bridge ends within rows 10..14 (front_hillsides' free-standing peaks) */
 } cam;
 
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
-static u16 flag(u16 arr, int s) { return TRKW(arr, clampi(s, 0, TRK_N - 1)); }
+u16 enh_flag(u16 arr, int s)
+{
+    if (arr == TRK_LANE) return TRKW(arr, clampi(s + enh_toff, 0, TRK_N - 1));
+    if (enh_toff) {                                             /* drag strip: its own flag arrays at the segment */
+        arr = arr == TRK_L ? TRK_L2 : arr == TRK_R ? TRK_R2 : arr == TRK_C ? TRK_C2 : arr;
+        return TRKW(arr, clampi(s, 0, 0x73));
+    }
+    return TRKW(arr, clampi(s, 0, TRK_N - 1));
+}
+
+s16 enh_bank(u16 arr, int s) { return TRKS(arr, clampi(s + enh_toff, 0, TRK_N - 1)); }
+
+static u16 flag(u16 arr, int s) { return enh_flag(arr, s); }
+
+/* bank height (BL / BR) at a continuous position, linear between the boundaries */
+static double bank_at(u16 arr, double Pw)
+{
+    double f = floor(Pw / 64.0);
+    int i = (int)f;
+    double v0 = enh_bank(arr, i), v1 = enh_bank(arr, i + 1);
+    return v0 + (v1 - v0) * (Pw / 64.0 - f);
+}
 
 /* The front view's track: past the street drag race's finish the table holds the road course (curves, hills, its
  * objects); the live view shows plain road there: from segment `synth` (track_end) on only the centre dashes (C & 8,
@@ -108,7 +135,7 @@ static void edges_at(const cam *c, int s, double *xl, double *xr)
 }
 
 /* The projected values of one cross-section at Pw. */
-typedef struct { double Pw, xl, xr, xol, xor_, y, ye; } sect;
+typedef struct { double Pw, xl, xr, xol, xor_, y, ye, yk, yt1, yt2; } sect;
 
 static sect section(const cam *c, double Pw)
 {
@@ -123,6 +150,9 @@ static sect section(const cam *c, double Pw)
     p.xor_ = proj_x(c, Pw, 0xCE4 + c->w);
     p.y = proj_y(c, Pw, SURFACE);
     p.ye = proj_y(c, Pw, EYE);
+    p.yk = proj_y(c, Pw, 0x79E);
+    p.yt1 = c->mode == 0x10 ? proj_y(c, Pw, SURFACE - bank_at(TRK_BL, Pw)) : p.y;
+    p.yt2 = c->mode == 0x10 ? proj_y(c, Pw, SURFACE - bank_at(TRK_BR, Pw)) : p.y;
     return p;
 }
 
@@ -182,19 +212,46 @@ static double dash_width(const cam *c, int kband, double Pw)
     return w0 + (w1 - w0) * f;
 }
 
+/* Mulholland's hill tables (DS:7E1E..: width, height per row; the extension E at 7E3A) read at a continuous index */
+static double tabv(u16 addr, double m, int off)
+{
+    m = fmin(fmax(m, 1.0), 16.0);
+    int i = (int)floor(m), j = i < 16 ? i + 1 : 16;
+    double f = m - i;
+    s16 a = DSS((u16)(addr + 4 * i + off)), b = DSS((u16)(addr + 4 * j + off));
+    return a + (b - a) * f;
+}
+
+static double rowf(const cam *c, double Pw) { return Pw / 64.0 - c->seg0; }     /* the boundary's row, continuous */
+
 static void band(const cam *c, int s, int kband, const sect *p, int n)
 {
     u16 C = cflag(c, TRK_C, s), L = cflag(c, TRK_L, s), R = cflag(c, TRK_R, s);
     bool cross = C & 1;
     if (cross && (C & 4)) return;                               /* intersection: nothing drawn */
     bool wide = (c->mode & 6) && s < c->start_seg + 5;
+    bool mh = c->mode == 0x10;
+    /* Mulholland: the verge strips (colour 2) while the car is not far below the road, the ground (9) beside the road
+     * only where the bank in front is flat, and the white finish band from segment 0x3AD */
+    bool verge = mh && !(C & 0x80) && enh_track_hgt(c->seg0 * 64.0) - 0x0B <= c->hgt;
+    bool flat_l = !mh || enh_bank(TRK_BL, s - 1) == 0, flat_r = !mh || enh_bank(TRK_BR, s - 1) == 0;
+    bool white = (C & 0x10) && (!mh || c->seg0 >= 0x3AD);
     for (int i = 0; i < n; i++) {
         const sect *a = &p[i], *b = &p[i + 1];                  /* near, far */
         if (b->y >= a->y) continue;                             /* faces away (behind a crest) */
         if (!cross) {
-            band_quad(9, -1.0, b->xl, -1.0, a->xl, b, a);
-            band_quad(9, b->xr, 321.0, a->xr, 321.0, b, a);
-            band_quad((C & 0x10) ? 0x0F : 1, b->xl, b->xr, a->xl, a->xr, b, a);
+            if (verge) {
+                band_quad(2, b->xol, b->xl, a->xol, a->xl, b, a);
+                band_quad(2, b->xr, b->xor_, a->xr, a->xor_, b, a);
+            }
+            double lb = -1.0, la = -1.0, rb = 321.0, ra = 321.0;
+            if (mh && c->l16 && s - c->seg0 >= 10) {            /* beside the far rows the ground reaches `ext` only */
+                double eb = tabv(DS_hill_peak_tab, 17.0 - rowf(c, b->Pw), 4), ea = tabv(DS_hill_peak_tab, 17.0 - rowf(c, a->Pw), 4);
+                lb = b->xl - eb; la = a->xl - ea; rb = b->xr + eb; ra = a->xr + ea;
+            }
+            if (flat_l) band_quad(9, lb, b->xl, la, a->xl, b, a);
+            if (flat_r) band_quad(9, b->xr, rb, a->xr, ra, b, a);
+            band_quad(white ? 0x0F : 1, b->xl, b->xr, a->xl, a->xr, b, a);
         } else {
             if (!(L & 0x80)) band_quad(4, b->xol, b->xl, a->xol, a->xl, b, a);
             else {
@@ -215,6 +272,166 @@ static void band(const cam *c, int s, int kband, const sect *p, int n)
             double cb = (b->xl + b->xr) / 2, ca = (a->xl + a->xr) / 2;
             band_quad(wide ? 2 : 4, cb - (wb + 1) / 2, cb + (wb + 1) / 2, ca - (wa + 1) / 2, ca + (wa + 1) / 2, b, a);
         }
+    }
+}
+
+/* ---------------------------------------------------------------- Mulholland: hillsides, rails, trusses (S2.4) */
+
+#define XEDGE_L  (-1.0)
+#define XEDGE_R  321.0
+#define YBOT     102.0          /* below the last view row (0x65) */
+
+static void poly(u8 col, int n, const double *xy) { ras_poly(xy, n, col); }
+
+/* front_hillsides of segment s (race_road.c): the banks beside the road as polygons of colour 0x0E from the screen
+ * edge to the outer band, on the left (sg -1) and the right (sg +1); `a` near, `b` far (a slice of the segment);
+ * the conditions of the original's row (bank in front / behind, bridge neighbour) are the segment's, the geometry is
+ * the slice's. Peak widths and heights come from the original's per-row tables at the continuous row. */
+static void hill_side(const cam *c, int s, const sect *a, const sect *b, bool first, const sect *q1, int sg)
+{
+    bool left = sg < 0;
+    u16 bank = left ? TRK_BL : TRK_BR;
+    bool row1 = s == c->seg0 + 1;
+    bool bridge_prev = flag(TRK_C, s - 1) & 0x80;
+    s16 bq = enh_bank(bank, s - 1), bp = enh_bank(bank, s);        /* bank (up) at the near / far boundary */
+    s16 bq1 = enh_bank(bank, s - 2);
+    double o = c->fall_dir;
+    double dyaw = c->heading - enh_track_yaw(c->seg0 * 64.0);
+    if (left ? !(dyaw > -100) : !(dyaw < 100)) return;
+    if (bq == 0) return;                                        /* Yq == YT1q: no bank at the near boundary */
+    double xq = left ? a->xol : a->xor_, xp = left ? b->xol : b->xor_;
+    double ytq = left ? a->yt1 : a->yt2, ytp = left ? b->yt1 : b->yt2;
+    double xe = left ? XEDGE_L : XEDGE_R;
+    double ra = rowf(c, a->Pw), rb = rowf(c, b->Pw);
+    double W1 = tabv(DS_hill_peak_tab, 15.0 - ra, 0), H1 = tabv(DS_hill_peak_tab, 15.0 - ra, 2);
+    double W0 = tabv(DS_hill_peak_tab, 15.0 - rb, 0), H0 = tabv(DS_hill_peak_tab, 15.0 - rb, 2);
+    double E = tabv(0x7E3A, 15.0 - rb, 0);
+    double xl_q = left ? a->xl : a->xr;
+    if (c->l16) {
+        if (bp < 0) return;                                     /* YT1p <= Yp */
+        if (bridge_prev && first && q1) {
+            double xq1 = left ? q1->xl : q1->xr;
+            double v[12] = { xq1, YBOT, xq1, q1->y, xl_q, a->y, xq, a->y, xq + sg * W1, a->y, left ? E : 320.0 - E, YBOT };
+            poly(0x0E, 6, v);
+            if (bp > 0) { double t[6] = { xq, a->y, xq + sg * W1 / 2, a->y - H1, xq + sg * W1, a->y }; poly(0x0E, 3, t); }
+            else { double t[8] = { xq, a->y, xq + sg * W1, a->y, xp + sg * W1, b->y, xp, b->y }; poly(0x0E, 4, t); }
+        }
+        if (bp > 0) {
+            double t[8] = { xq, a->y, xq + sg * W1 / 2, a->y - H1, xp + sg * W0 / 2, b->y - H0, xp, b->y };
+            poly(0x0E, 4, t);
+        }
+        return;
+    }
+    if (row1 || !bridge_prev) {
+        if (a->xol + 0x1E < a->xor_) {
+            double t[8] = { xe, ytq, xq - o, a->y, xp + o, b->y, xe, ytp };
+            poly(0x0E, 4, t);
+            bool tri = row1 ? a->y > ytq : bq1 == 0;
+            if (tri && (left ? xq > 0 : xq < 0x13F)) { double u[6] = { xe, ytq, xq, a->y, xe, a->y }; poly(0x0E, 3, u); }
+        }
+    } else {
+        if (first && q1) {
+            double xq1 = left ? q1->xl : q1->xr;
+            double v[12] = { xe, ytq, xq, a->y, xl_q, a->y, xq1, q1->y, xq1, YBOT, xe, YBOT };
+            poly(0x0E, 6, v);
+        }
+        double t[8] = { xe, ytq, xq, a->y, xp, b->y, xe, ytp };
+        poly(0x0E, 4, t);
+    }
+}
+
+static void hillsides(const cam *c, int s, const sect *p, int n)
+{
+    if (c->mode != 0x10 || (cflag(c, TRK_C, s) & 0x80)) return;
+    sect q1 = section(c, fmax((s - 2) * 64.0, c->P));
+    for (int i = 0; i < n; i++)
+        for (int sg = -1; sg <= 1; sg += 2) hill_side(c, s, &p[i], &p[i + 1], i == 0, &q1, sg);
+}
+
+/* a thin line as a quad (the 1-pixel edge colour of poly_fill / clip_line) */
+static void thin(u8 col, double x0, double y0, double x1, double y1)
+{
+    double th = 0.3;
+    quad(col, x0, y0, x1, y1, x1, y1 + th, x0, y0 + th);
+}
+
+/* a quad with an edge colour: the edge drawn first, a little wider */
+static void edged(u8 fill, u8 edge, double x0, double y0, double x1, double y1, double x2, double y2, double x3, double y3)
+{
+    double cx = (x0 + x1 + x2 + x3) / 4, cy = (y0 + y1 + y2 + y3) / 4, e = 0.4;
+    double xs[4] = { x0, x1, x2, x3 }, ys[4] = { y0, y1, y2, y3 }, o[8];
+    for (int k = 0; k < 4; k++) {
+        o[2 * k] = xs[k] + (xs[k] > cx ? e : -e);
+        o[2 * k + 1] = ys[k] + (ys[k] > cy ? e : -e);
+    }
+    ras_poly(o, 4, edge);
+    quad(fill, x0, y0, x1, y1, x2, y2, x3, y3);
+}
+
+/* guard_rail (right side of the road, R & 0x8000): a short post at the near boundary on every other segment and the
+ * rail between the kerb height and the eye level */
+static void guard_rail(const cam *c, int s, const sect *p, int n, int m)
+{
+    int run = s;
+    while (run > 0 && (flag(TRK_R, run - 1) & 0x8000)) run--;      /* the run's first segment: the phase */
+    if (((run - s + 14) & 1) != 0) {
+        const sect *a = &p[0];
+        double z = (a->Pw - c->P) / 8.0 + 4.0, x = a->xor_ - 240.0 / (z + 12.0);
+        edged(5, 2, x, a->yk - 1, x, a->y, a->xor_, a->y, a->xor_, a->yk - 1);
+    }
+    for (int i = 0; i < n; i++) {
+        const sect *a = &p[i], *b = &p[i + 1];
+        quad(5, b->xor_, b->ye - m, b->xor_, b->yk, a->xor_, a->yk, a->xor_, a->ye - m);
+        thin(2, b->xor_, b->ye - m, a->xor_, a->ye - m);
+        thin(2, b->xor_, b->yk, a->xor_, a->yk);
+    }
+}
+
+/* scenery_draw_truss (bridges, C & 0x80) over a whole segment, colour 10, lines `N` px thick */
+static void truss(const cam *c, int s, int k, const sect *a, const sect *b)
+{
+    double N = dash_width(c, k, b->Pw) + 1, yt1 = proj_y(c, a->Pw, 1600.0), yt2 = proj_y(c, b->Pw, 1600.0);
+    double xl1 = a->xl, xr1 = a->xr, xl2 = b->xl, xr2 = b->xr, yb1 = a->y, yb2 = b->y;
+    quad(10, xl1 - N, yt1, xl1, yt1, xl1, yb1 + 1, xl1 - N, yb1 + 1);          /* posts and top bar at the near end */
+    quad(10, xr1 + 1, yt1, xr1 + 1 + N, yt1, xr1 + 1 + N, yb1 + 1, xr1 + 1, yb1 + 1);
+    quad(10, xl1, yt1, xr1 + 1, yt1, xr1 + 1, yt1 + N, xl1, yt1 + N);
+    bool alt = (s & 1) == 0 || k >= 7;
+    for (int sd = 0; sd < 2; sd++) {
+        double x1 = sd ? xr1 + 1 : xl1 - N, x2 = sd ? xr2 + 1 : xl2 - N;
+        if (alt) quad(10, x1, yb1, x1 + N, yb1, x2 + N, yt2, x2, yt2);
+        else     quad(10, x1, yt1, x1 + N, yt1, x2 + N, yb2, x2, yb2);
+        quad(10, x1, yt1, x1 + N, yt1, x2 + N, yt2, x2, yt2);                  /* top and bottom rails */
+        quad(10, x1, yb1, x1 + N, yb1, x2 + N, yb2, x2, yb2);
+    }
+}
+
+static void truss_end(const cam *c, int k, const sect *b)
+{
+    double N = dash_width(c, k, b->Pw) + 1, yt = proj_y(c, b->Pw, 1600.0);
+    quad(10, b->xl - N, yt, b->xl, yt, b->xl, b->y + 1, b->xl - N, b->y + 1);
+    quad(10, b->xr + 1, yt, b->xr + 1 + N, yt, b->xr + 1 + N, b->y + 1, b->xr + 1, b->y + 1);
+    quad(10, b->xl, yt, b->xr + 1, yt, b->xr + 1, yt + N, b->xl, yt + N);
+}
+
+/* mulholland_extras_front: after the row's objects */
+static void extras(const cam *c, int s, int k, const sect *p, int n)
+{
+    u16 C = cflag(c, TRK_C, s), R = cflag(c, TRK_R, s);
+    if (C & 1) return;
+    if ((C & 0x80) && (flag(TRK_C, s - 1) & 0x80)) truss(c, s, k, &p[0], &p[n]);
+    if ((C & 0x80) && !(flag(TRK_C, s + 1) & 0x80)) truss_end(c, k, &p[n]);
+    if ((R & 0x8000) && !(C & 0x80)) guard_rail(c, s, p, n, 0);
+}
+
+/* drag strip: the barrier walls along the road edges, stripes of 5 segments (road_draw_barrier_walls) */
+static void barriers(const cam *c, int s, const sect *p, int n)
+{
+    int v = abs(14 + c->start_seg - s) % 10;
+    u8 col = v < 5 ? 0x0B : 4;
+    for (int i = 0; i < n; i++) {
+        const sect *a = &p[i], *b = &p[i + 1];
+        quad(col, b->xr, b->yk, b->xr, b->y + 1, a->xr, a->y + 1, a->xr, a->yk);
+        quad(col, b->xl, b->yk, b->xl, b->y + 1, a->xl, a->y + 1, a->xl, a->yk);
     }
 }
 
@@ -262,8 +479,7 @@ static void objects(const cam *c, int s, int pass)
     b.ye = est_y(c, Pw, EYE);
     b.y16 = c->compare ? 4 * b.ye - 3 * b.y : est_y(c, Pw, 1600.0);
     double Pq = fmax((s - 1) * 64.0, c->P), yq = est_y(c, Pq, SURFACE);    /* row k - 1 (row 0 at z = 4) */
-    int sq = clampi(s - 1, 0, TRK_N - 1);
-    double ybl = est_y(c, Pq, SURFACE - TRKS(TRK_BL, sq)), ybr = est_y(c, Pq, SURFACE - TRKS(TRK_BR, sq));
+    double ybl = est_y(c, Pq, SURFACE - enh_bank(TRK_BL, s - 1)), ybr = est_y(c, Pq, SURFACE - enh_bank(TRK_BR, s - 1));
     b.flat_l = c->compare ? ybl == yq : fabs(ybl - yq) < 0.5;
     b.flat_r = c->compare ? ybr == yq : fabs(ybr - yq) < 0.5;
     b.dash = dash_width(c, k, Pw);
@@ -287,9 +503,12 @@ static void segment(const cam *c, int s, int kband, double Pa, double Pb)
     }
     /* the town's far road stays below the rooftop panorama's base (its fill there is the road colour, §4 item 6) */
     if (split) ras_clip(0, TOWN_HORIZON, 320, ENH_VIEW_Y1);
+    hillsides(c, s, p, n);
     band(c, s, kband, p, n);
     if (split) ras_clip(0, ENH_VIEW_Y0, 320, ENH_VIEW_Y1);
     objects(c, s, split ? ENH_OBJ_IN : ENH_OBJ_ALL);
+    if (c->mode == 0x10) extras(c, s, kband, p, n);
+    if (c->mode & 6) barriers(c, s, p, n);
 }
 
 static void road(const cam *c)
@@ -339,8 +558,31 @@ static void sky_row(u8 *dst, int S, int src, double shift)
     }
 }
 
+/* road_draw_sky_mulholland: one picture (sky, mountains) from page-1 row 0x6E - dy, dy = the car's height over the road
+ * four segments behind (clamped to +-8), scrolled by the heading; the ground is the bands and hillsides. Falling off
+ * the road (fall_dir) the rows below the picture are the hillside colour. */
+static void sky_mulholland(const cam *c)
+{
+    int S = ras_S(), rows = (ENH_VIEW_Y1 - ENH_VIEW_Y0) * S;
+    double dy = c->hgt - (c->compare ? TRKS(TRK_HGT, clampi(c->seg0 - 4, 0, TRK_N - 1)) : enh_track_hgt(c->P - 288.0));
+    if (dy > 8) dy = 8;
+    else if (dy < -8 && c->fall_dir == 0) dy = -8;
+    double sy = 0x6E - dy, bottom = 0x12 + fmin(199 - sy, 0x53), shift = 2.0 * SKY_RATE * c->heading;
+    if (c->compare) {                                           /* the original's scroll: 2 px per unit, whole bytes */
+        int h = (int)lround(c->heading), m = (abs(h) * 2 % 320) & ~7;
+        shift = h > 0 ? m : -m;
+    }
+    for (int j = 0; j < rows; j++) {
+        double y = ENH_VIEW_Y0 + (j + 0.5) / S;
+        u8 *d = ras_row(j);
+        if (y >= bottom) memset(d, c->fall_dir ? 0x0E : 9, (size_t)320 * S);
+        else sky_row(d, S, (int)floor(y - 0x12 + sy), shift);
+    }
+}
+
 static void sky(const cam *c)
 {
+    if (c->racing && c->mode == 0x10) { sky_mulholland(c); return; }
     int S = ras_S(), rows = (ENH_VIEW_Y1 - ENH_VIEW_Y0) * S;
     double hy = 0;
     if (c->racing) {
@@ -426,6 +668,7 @@ static void mir_band(const cam *c, int s, int r, const sect *p, int n)
     bool cross = C & 1;
     if (cross && (C & 4)) return;
     bool white = (C & 0x10) && c->seg0 >= 0x169;
+    bool wide = (c->mode & 6) && c->seg0 - r < c->start_seg + 5;       /* mirror_row_seg = seg - r */
     for (int i = 0; i < n; i++) {
         const sect *a = &p[i], *b = &p[i + 1];                  /* near, far */
         if (b->y > a->y) continue;                              /* faces away */
@@ -449,8 +692,9 @@ static void mir_band(const cam *c, int s, int r, const sect *p, int n)
         }
         if (C & 8) {
             double wb = mir_dash(c, r, b->Pw), wa = mir_dash(c, r, a->Pw);
+            if (wide) { wb *= 4; wa *= 4; }
             double cb = (b->xl + b->xr) / 2, ca = (a->xl + a->xr) / 2;
-            band_quad(4, cb - (wb + 1) / 2, cb + (wb + 1) / 2, ca - (wa + 1) / 2, ca + (wa + 1) / 2, b, a);
+            band_quad(wide ? 2 : 4, cb - (wb + 1) / 2, cb + (wb + 1) / 2, ca - (wa + 1) / 2, ca + (wa + 1) / 2, b, a);
         }
     }
 }
@@ -493,8 +737,8 @@ static void mir_objects(const cam *c, int r, int pass)
     /* row r - 1 (nearer); its banks: the original reads them forward (BL[seg + r - 1], RR 0ce4), the enhanced
      * mirror behind the car at that boundary (§3.7) */
     double Pq = c->compare ? Pw + 64.0 : fmin(Pw + 64.0, c->P - 64.0), yq = mir_est_y(c, Pq, SURFACE);
-    int sq = clampi(c->compare ? c->seg0 + r - 1 : bnd + 1, 0, TRK_N - 1);
-    double ybl = mir_est_y(c, Pq, SURFACE - TRKS(TRK_BL, sq)), ybr = mir_est_y(c, Pq, SURFACE - TRKS(TRK_BR, sq));
+    int sq = c->compare ? c->seg0 + r - 1 : bnd + 1;
+    double ybl = mir_est_y(c, Pq, SURFACE - enh_bank(TRK_BL, sq)), ybr = mir_est_y(c, Pq, SURFACE - enh_bank(TRK_BR, sq));
     b.flat_l = c->compare ? ybl == yq : fabs(ybl - yq) < 0.5;
     b.flat_r = c->compare ? ybr == yq : fabs(ybr - yq) < 0.5;
     b.dash = mir_dash(c, r, Pw);
@@ -537,6 +781,14 @@ static void mirror(const cam *c0)
         mir_walls(&c, s, p, n, false);
         mir_band(&c, s, r, p, n);
         mir_objects(&c, r, split ? ENH_OBJ_IN : ENH_OBJ_ALL);
+        if (c.mode & 6) {                                       /* barrier walls: the stripe index runs with seg + r (sic) */
+            u8 col = abs(7 - r - c.seg0 + c.start_seg) % 10 < 5 ? 0x0B : 4;
+            for (int i = 0; i < n; i++) {
+                const sect *a = &p[i], *b = &p[i + 1];
+                quad(col, b->xr, b->yk, b->xr, b->y + 1, a->xr, a->y + 1, a->xr, a->yk);
+                quad(col, b->xl, b->yk, b->xl, b->y + 1, a->xl, a->y + 1, a->xl, a->yk);
+            }
+        }
     }
     /* mirror_finish: the frame lines (view clip) */
     ras_clip(0, ENH_VIEW_Y0, 320, ENH_VIEW_Y1);
@@ -555,8 +807,11 @@ static cam cam_of(const enh_view *v)
         .P = v->P, .cx = v->cam_x, .cy = v->cam_y, .hgt = v->cur_height, .heading = v->heading,
         .bounce = v->bounce_y, .mode = b->mode, .seg0 = (int)floor(v->P / 64.0), .racing = b->racing != 0,
         .compare = v->compare, .start_seg = b->start_seg, .w = b->mode == 0x10 ? 200 : 400,
-        .far_z = 4.0 + (FAR_Z - 4.0) * enh.draw_scale, .rows = v->rows, .synth = INT_MAX,
+        .far_z = 4.0 + (FAR_Z - 4.0) * enh.draw_scale, .rows = v->rows, .synth = INT_MAX, .fall_dir = b->fall_dir,
     };
+    if (c.mode == 0x10)                                         /* front_hillsides: a bridge ends within rows 10..14 */
+        for (int k = 14; k > 9; k--)
+            if (!(flag(TRK_C, c.seg0 + k) & 0x80) && (flag(TRK_C, c.seg0 + k - 1) & 0x80)) c.l16 = true;
     if (c.racing && !c.compare && b->track_end > 0) {          /* modes 0, 1: the finish at track_end 0x17C */
         c.synth = b->track_end;
     }
@@ -570,6 +825,11 @@ void enh_road_debug_rows(const enh_view *v, FILE *f)
 {
     cam c = cam_of(v);
     int q = (int)fmod(c.P, 64.0) >> 3;
+    for (int k = 0; k <= 14; k++) {        /* the flags and banks of the view (S2.4) */
+        int s = c.seg0 + k;
+        fprintf(f, "  seg %d L %04x R %04x C %04x BL %d BR %d\n", s, flag(TRK_L, s), flag(TRK_R, s), flag(TRK_C, s),
+                enh_bank(TRK_BL, s), enh_bank(TRK_BR, s));
+    }
     for (int k = 1; k < 8; k++) {           /* rows 1..7 recomputed with the original's own projection */
         int s = c.seg0 + k;
         s16 z = (s16)(12 - q + 8 * (k - 1)), dx = (s16)(DSS(DS_heading) - TRKS(TRK_YAW, s));
@@ -602,11 +862,12 @@ void enh_road_debug_rows(const enh_view *v, FILE *f)
 bool enh_road_render(const enh_view *v)
 {
     const enh_snap *b = v->b;
-    if (!b || (b->mode != 0 && b->mode != 1) || b->fallen) return false;   /* S2.3: modes 0 and 1 */
+    if (!b || (b->mode != 0 && b->mode != 1 && b->mode != 2 && b->mode != 4 && b->mode != 0x10) || b->fallen)
+        return false;                                           /* S2.3: modes 0 and 1; S2.4: 2, 4, 0x10 */
     if (!ras_begin(enh.res_scale * enh.aa)) return false;
     cam c = cam_of(v);
     sky(&c);
     road(&c);
-    mirror(&c);
+    if (c.mode != 0x10) mirror(&c);                             /* Mulholland's mirror: the original's pixels */
     return true;
 }
