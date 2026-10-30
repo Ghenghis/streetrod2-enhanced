@@ -117,6 +117,39 @@ static void image(const u8 *px, int w, int h, double x0, double y0, double x1, d
     }
 }
 
+void ras_sprite_rot(const u8 *px, int w, int h, double pu, double pv, double x, double y, double f, double c, double s,
+                    double ymax)
+{
+    if (!rb.buf || w <= 0 || h <= 0 || f <= 0) return;
+    double S = rb.S, xmin = 1e30, xmax = -1e30, ymn = 1e30, ymx = -1e30;
+    for (int k = 0; k < 4; k++) {                           /* the rotated picture's bounding box */
+        double U = ((k & 1) ? w : 0) - pu, V = ((k & 2) ? h : 0) - pv;
+        double X = x + f * (c * U + s * V), Y = y + f * (-s * U + c * V);
+        xmin = fmin(xmin, X); xmax = fmax(xmax, X); ymn = fmin(ymn, Y); ymx = fmax(ymx, Y);
+    }
+    if (!isfinite(xmin) || !isfinite(ymn)) return;
+    int i0 = (int)floor(xmin * S), i1 = (int)ceil(xmax * S);
+    int j0 = (int)floor((ymn - ENH_VIEW_Y0) * S), j1 = (int)ceil((fmin(ymx, ymax) - ENH_VIEW_Y0) * S);
+    if (i0 < rb.ci0) i0 = rb.ci0;
+    if (i1 > rb.ci1) i1 = rb.ci1;
+    if (j0 < rb.cj0) j0 = rb.cj0;
+    if (j1 > rb.cj1) j1 = rb.cj1;
+    double k = 1.0 / f;
+    for (int j = j0; j < j1; j++) {
+        double Y = (j + 0.5) / S + ENH_VIEW_Y0 - y;
+        if (Y + y >= ymax) break;
+        const u8 *t = bayer[j & 3];
+        u8 *out = rb.buf + (size_t)j * rb.w;
+        for (int i = i0; i < i1; i++) {
+            double X = (i + 0.5) / S - x;
+            int u = (int)floor((c * X - s * Y) * k + pu), v = (int)floor((s * X + c * Y) * k + pv);
+            if (u < 0 || u >= w || v < 0 || v >= h || t[i & 3] >= rb.alpha) continue;
+            u8 p = px[(size_t)v * w + u];
+            if (p != ENH_TRANSPARENT) out[i] = p;
+        }
+    }
+}
+
 /* A convex polygon of n points (x, y pairs, logical coordinates); a non-convex one fills its rows' extents. */
 void ras_poly(const double *xy, int n, u8 c)
 {

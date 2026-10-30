@@ -183,6 +183,8 @@ static void snap_take(void)
     s->light_latch = DSS(DS_light_latch);
     s->starter_seg = DSS(DS_starter_seg);
     s->wall_hit_shift = DSS(DS_wall_hit_shift);
+    s->top_xl = DSS(DS_aq_def_top_xl);                      /* aq_project_front's deformation (the others are saved) */
+    s->top_xr = DSS(DS_aq_def_top_xr);
     for (int i = 0; i < 17; i++) s->pal[i] = ega_get_palette_reg(i);
     ring.n++;
 }
@@ -245,6 +247,7 @@ static double pos(s16 seg, s16 sub) { return seg * 64.0 + sub; }
 /* heading - YAW(P): the heading relative to the road at the car's continuous position */
 static double rel_heading(const enh_snap *s)
 {
+    if (s->mode == 8) return s->heading;                    /* the Aqueduct is straight: the raw heading (S2.7) */
     s16 y0 = trk(TRK_YAW, s->seg);
     return (s16)(s->heading - y0) - (enh_track_yaw(pos(s->seg, s->substep)) - y0);
 }
@@ -258,7 +261,8 @@ static bool discontinuous(const enh_snap *a, const enh_snap *b)
         || abs((s16)(b->heading - a->heading)) >= SNAP_HEADING || abs((s16)(b->cam_x - a->cam_x)) >= SNAP_CAM_X;
 }
 
-enum { V_P, V_REL, V_CAMX, V_CAMY, V_HGT, V_BOUNCE, V_WHEEL, V_O, V_LAT, V_ROLL, V_RCX, V_RCY, V_PITCH, V_AQDY, V_N };
+enum { V_P, V_REL, V_CAMX, V_CAMY, V_HGT, V_BOUNCE, V_WHEEL, V_O, V_LAT, V_ROLL, V_RCX, V_RCY, V_PITCH, V_AQDY,
+       V_FH, V_TH, V_XL, V_XR, V_TXL, V_TXR, V_N };
 
 static void values(const enh_snap *s, double *v)
 {
@@ -276,6 +280,12 @@ static void values(const enh_snap *s, double *v)
     v[V_RCY] = s->rot_cy;
     v[V_PITCH] = s->aq_pitch;
     v[V_AQDY] = s->aq_dy;
+    v[V_FH] = s->floor_h;
+    v[V_TH] = s->top_h;
+    v[V_XL] = s->xl;
+    v[V_XR] = s->xr;
+    v[V_TXL] = s->top_xl;
+    v[V_TXR] = s->top_xr;
 }
 
 /* Position of time t on the pair (a, b): 0 at a, 1 at b, extrapolated up to `xmax` past a. */
@@ -291,6 +301,8 @@ static void pair_at(const enh_snap *a, const enh_snap *b, double x, double *out)
     double va[V_N], vb[V_N];
     values(a, va);
     values(b, vb);
+    if (vb[V_ROLL] - va[V_ROLL] > 180) vb[V_ROLL] -= 360;  /* the roll wraps at +-360 degrees: the short way */
+    else if (vb[V_ROLL] - va[V_ROLL] < -180) vb[V_ROLL] += 360;
     for (int k = 0; k < V_N; k++) out[k] = va[k] + (vb[k] - va[k]) * x;
     /* the opponent jumps on its own (aq_wall_bounce pulls it away 2 segments a frame): no blend then */
     if (fabs(vb[V_O] - va[V_O]) >= SNAP_SEGS * 64) out[V_O] = vb[V_O];
@@ -338,7 +350,7 @@ bool enh_interp(uint64_t now_ns, enh_view *o)
     }
     o->P = v[V_P];
     o->rel_heading = v[V_REL];
-    o->heading = enh_track_yaw(o->P) + o->rel_heading;
+    o->heading = b->mode == 8 ? o->rel_heading : enh_track_yaw(o->P) + o->rel_heading;
     o->cam_x = v[V_CAMX];
     o->cam_y = v[V_CAMY];
     o->cur_height = v[V_HGT];
@@ -351,6 +363,12 @@ bool enh_interp(uint64_t now_ns, enh_view *o)
     o->rot_cy = v[V_RCY];
     o->aq_pitch = v[V_PITCH];
     o->aq_dy = v[V_AQDY];
+    o->aq_fh = v[V_FH];
+    o->aq_th = v[V_TH];
+    o->aq_xl = v[V_XL];
+    o->aq_xr = v[V_XR];
+    o->aq_txl = v[V_TXL];
+    o->aq_txr = v[V_TXR];
     return true;
 }
 
@@ -391,9 +409,9 @@ void enh_race_begin(int road_mode)
     if (enh.classic) return;
     rs.overlay = (enh.modes & mode_bit(road_mode)) != 0;
     rs.hold = rs.rendered = false;
-    rs.draws_view = rs.overlay && road_mode != 8;       /* S2.3: town, street drag race; S2.4: strip, Mulholland */
+    rs.draws_view = rs.overlay;     /* S2.3: town, street drag race; S2.4: strip, Mulholland; S2.7: the Aqueduct */
     enh_toff = (road_mode & 6) ? 0xC0 : 0;
-    rs.draws_objects = rs.draws_view;                                       /* S2.5: the same modes */
+    rs.draws_objects = rs.draws_view && road_mode != 8;     /* S2.5 (the Aqueduct has no front_objects) */
     rs.in_objects = rs.in_mirror = false;
     rs.bg = false;
     rs.shown_page = 0;
@@ -472,7 +490,7 @@ void enh_frame_begin(void)
     if (!rs.overlay) return;
     rs.bg = true;
     if (trace && ring.n) trace_snap(snap_at(0));           /* the previous frame, now complete */
-    if (!ring.n && rs.draws_view) enh_sky_capture();        /* road_load_graphics has stored the sky in page 1 */
+    if (!ring.n && rs.draws_view && DSW(DS_road_mode) != 8) enh_sky_capture();        /* road_load_graphics has stored the sky in page 1 */
     if (compare >= 2) enh_compare_objs_clear();
     snap_take();
 }

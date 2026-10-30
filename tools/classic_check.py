@@ -28,6 +28,7 @@ ENHANCED = os.path.join(ROOT, "build", "sr2-enhanced.exe")
 PATHS = {
     "title": (["v"], {}, "1:03,25:1e,26:1c", 34),
     "race_drag": (["demo", "v"], {"SR_DEBUG_RACE": "drag"}, "1:03", 45),
+    "race_aq": (["demo", "v"], {"SR_DEBUG_RACE": "aqueduct"}, "1:03", 45),     # S2.7
 }
 
 

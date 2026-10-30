@@ -32,6 +32,7 @@ typedef struct {
     /* Aqueduct (at enh_layer_fg) */
     s16 roll, rot_cos, rot_sin, rot_cx, rot_cy, aq_pitch, aq_dy;
     s16 floor_h, top_h, xl, xr, wall_l_shift, wall_r_shift, opp_bank, wall_hit_shift;
+    s16 top_xl, top_xr;         /* the wall-top shifts of the frame's deformation (at enh_frame_begin, S2.7) */
     /* palette: 16 attribute registers + overscan */
     u8 pal[17];
     /* compare */
@@ -53,6 +54,7 @@ typedef struct {
     double cam_x, cam_y, cur_height, bounce_y, wheel;
     double O, opp_lat;          /* opponent position in sub-steps, lateral position */
     double roll, rot_cx, rot_cy, aq_pitch, aq_dy;
+    double aq_fh, aq_th, aq_xl, aq_xr, aq_txl, aq_txr;     /* the Aqueduct's channel deformation (S2.7) */
     bool compare;               /* the compare view (SR_ENH_COMPARE >= 2): the original's constant-per-row details */
     int rows;                   /* compare aid: front segments drawn, seg + 1 .. seg + rows (0 = all, -1 = none) */
 } enh_view;
@@ -84,6 +86,10 @@ void ras_resolve(const u8 pal[17], const u8 *cover, u32 *out, int res_scale, int
 void ras_image(const u8 *px, int w, int h, double x0, double y0, double x1, double y1, double ymax);
 #define ENH_TRANSPARENT 0xFF
 void ras_sprite(const u8 *px, int w, int h, double x0, double y0, double x1, double y1, double ymax);   /* ras_image, index 0xFF skipped */
+/* ras_sprite scaled by f and rotated (c, s = cos, sin; dest offset X = f (c U + s V), Y = f (-s U + c V), the
+ * rotate_about_centre convention) about the picture point (pu, pv), which lands at (x, y) */
+void ras_sprite_rot(const u8 *px, int w, int h, double pu, double pv, double x, double y, double f, double c, double s,
+                    double ymax);
 void ras_downscale(u8 *idx);      /* 320 x (ENH_VIEW_Y1 - ENH_VIEW_Y0) indices, most frequent per pixel */
 u32 enh_pal_rgb(u8 attribute_reg);
 
@@ -120,6 +126,14 @@ extern unsigned enh_prop_n[4];
 void enh_prop_car(const enh_snap *b, int view, double sx, double sy, double z);
 void enh_prop_tree(double x, double ybase, double z);       /* z: the tree's boundary depth in front units */
 void enh_prop_starter(double x, double zm);                 /* zm: the mirror depth of its boundary */
+/* the Aqueduct (S2.7): the car's native unrotated picture of its level at the rotated anchor (sx, sy), rotated by
+ * `bank` degrees about its bottom centre; the starter in the mirror, feet at (x, ybase), rotated by `roll` */
+void enh_prop_car_aq(const enh_snap *b, int view, double sx, double sy, double z, double bank);
+void enh_prop_starter_aq(double x, double ybase, double zm, double roll);
+
+/* ---- Aqueduct (enh_aq.c, §3.3, S2.7): road mode 8, front view and mirror */
+bool enh_aq_render(const enh_view *v);
+void enh_aq_debug_rows(FILE *f);       /* compare aid (SR_ENH_COMPARE=3) */
 
 /* ---- compare (enh_compare.c, §5): SR_ENH_COMPARE >= 2 */
 /* object records: kind 0 shape, 1 hydrant, 2 sign picture, 3 banner; orig = recorded from the original's calls */

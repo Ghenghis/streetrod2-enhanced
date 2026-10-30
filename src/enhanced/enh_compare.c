@@ -283,6 +283,16 @@ void enh_compare_frame(const enh_snap *s, int page)
     v.cam_y = s->cam_y;
     v.cur_height = s->cur_height;
     v.bounce_y = s->bounce_y;
+    v.roll = s->roll;                                       /* the Aqueduct (S2.7) */
+    v.aq_dy = s->aq_dy;
+    v.aq_fh = s->floor_h;
+    v.aq_th = s->top_h;
+    v.aq_xl = s->xl;
+    v.aq_xr = s->xr;
+    v.aq_txl = s->top_xl;
+    v.aq_txr = s->top_xr;
+    v.O = s->opp_seg * 64.0 + s->opp_frac;
+    v.opp_lat = s->opp_lat;
     v.compare = true;
     objs.n[0] = 0;
     objs.sn = objs.sm = 0;

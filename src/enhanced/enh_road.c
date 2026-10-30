@@ -957,6 +957,7 @@ static cam cam_of(const enh_view *v)
  * then the mirror's rows 0..7 from the tables. */
 void enh_road_debug_rows(const enh_view *v, FILE *f)
 {
+    if (v->b->mode == 8) { enh_aq_debug_rows(f); return; }
     cam c = cam_of(v);
     int q = (int)fmod(c.P, 64.0) >> 3;
     for (int k = 0; k <= 14; k++) {        /* the flags and banks of the view (S2.4) */
@@ -996,6 +997,7 @@ void enh_road_debug_rows(const enh_view *v, FILE *f)
 bool enh_road_render(const enh_view *v)
 {
     const enh_snap *b = v->b;
+    if (b && b->mode == 8 && !b->fallen) return enh_aq_render(v);     /* S2.7: the Aqueduct's own renderer */
     if (!b || (b->mode != 0 && b->mode != 1 && b->mode != 2 && b->mode != 4 && b->mode != 0x10) || b->fallen)
         return false;                                           /* S2.3: modes 0 and 1; S2.4: 2, 4, 0x10 */
     if (!ras_begin(enh.res_scale * enh.aa)) return false;

@@ -21,6 +21,7 @@ remove it when it is done.
 | U1 | S2.4 (Mulholland and the drag strip): run `build\sr2-enhanced.exe` next to `build\sr2-enhanced.exe --classic`. **Mulholland Drive race**: sharp road, white finish band, centre dashes; the **hillsides** (yellow banks) beside the road and the **drop-offs** where the road has a cliff edge, the **guard rails** (posts every other segment) and the **truss bridges** (bridge frames: posts, top bar, diagonals) must be at the same places as in classic and move smoothly, no stair steps; the sky/mountains turn slowly when steering (1/8) and shift a little with hills; bushes, rocks and obstacles (the 0x14 ones) grow smoothly, no size steps; while driving over a hill crest nothing flickers. **The mirror in Mulholland is still the classic picture** (later subtask). **Drag strip (Grudge Night, qualifier and rounds)**: flat road with the **barrier walls** (red / cyan stripes of 5 segments) along both sides moving smoothly, the wide start dashes, start tree (classic pixels for now: it may lag a few pixels behind the interpolated road) and starter, the opponent (classic pixels), mirror drawn by Enhanced with the walls. Report anything misplaced, missing, flickering or ugly | S2.4 | 15 min |
 | U1 | S2.5 (opponent, police, start tree, starter): run `build\sr2-enhanced.exe` next to `build\sr2-enhanced.exe --classic`. **Drag race (street) and Mulholland**: the opponent car is now drawn from its own picture by Enhanced: sharp, and it must stay glued to the road (no sliding or bobbing against the road) as it pulls ahead, shrinking smoothly with distance (no size steps; classic shows its shrunk copies), and when it passes you it moves into the mirror (street drag race: sharp car in the mirror). Check that it is hidden behind nearer hills/objects as in classic, and that the crash / contact placement (bumping the opponent) looks like classic. **Street drag race mirror**: the starter figure stands at the start line in the mirror. **Drag strip (Grudge Night)**: the start tree is drawn by Enhanced (sharp, lamps light up in sequence) and grows as you approach; the opponent in the strip. Police cars (town cruise, speeding): same checks. Not changed on purpose: the starter sliding out at the bottom of the screen (screen overlay, classic pixels), the Mulholland mirror (S2.6 leftover). Report anything misplaced, flickering, too big or missing | S2.5 | 15 min |
 | U1 | S2.6 (Mulholland mirror): run `build\sr2-enhanced.exe` next to `--classic`, Mulholland Drive race. Look in the rear-view mirror: sharp road, yellow hillsides / banks and drop-offs, verge strips, guard rail, truss bridges, bushes and rocks, sky strip above the horizon; the opponent car in the mirror (sharp, no size steps) and the starter figure at the start. Same places as in classic, nothing flickering | S2.6 | 10 min |
+| U1 | S2.7 (Aqueduct): run `build\sr2-enhanced.exe` next to `build\sr2-enhanced.exe --classic` and race the Aqueduct (the night race in the concrete channel). Look at: the **channel** (grey walls and floor, black floor edges, white wall-top lines) sharp and moving smoothly, the far end now about 25 % further away; the **joint lines** every few segments, the **wall openings** (dark windows and doors in the walls), the **centre trough** (dark strip with a black outline, interrupted every 24 segments), the **low boxes** across the middle and the **two thin pillars**, the **floor shapes** (debris on the floor) growing smoothly with no size steps, and the white finish band; **steer up a wall**: the whole picture rolls smoothly with the climb (no 1-degree steps), everything stays glued together, the floor shapes and the opponent tilt with it, beyond the channel's far end the concrete continues (the original shows sky there while rolling); **bump a wall hard** (the bounce spins the view: it snaps as the original, no smearing); the **opponent car** sharp, tilted by its continuous bank angle when it rides up a wall (classic: 7 fixed angles), sizes like the other races; the **night sky**: small sharp stars and the sky shapes, scrolling at 1/8 of the original's speed when you steer (the same rule as the other races' skies: say if the Aqueduct should keep the original speed); the **mirror**: channel, stars, the starter at the start, the opponent behind you. Report anything misplaced, flickering, popping or missing | S2.7 | 15 min |
 | U3 | Decisions (defaults apply if unanswered), see U3 below | plan | 5 min |
 | U2 | The faithful playtests (U6 in `../StreetRod2/PLAN.md`) are still open. Bugs found there are fixed in the faithful repo first (S5.6) and ported here by hand | engine | - |
 
@@ -32,8 +33,9 @@ remove it when it is done.
   race view, `SR_ENH_COMPARE`; its U1 check open), the road-side objects part of S2.5 for modes 0 and 1 (pulled
   forward on the user's S2.3 playtest; since the S2.5 playtest the largest LOD only at true 1/z; the rest of S2.5 after
   S2.4), S2.5 complete (opponent, police, start tree, starter), S2.6 for modes 0 and 1 (enhanced mirror, town cruise checked; U1 check open), the modes 0 and 1 part of
-  S2.9 (draw distance x1.25 = 17.5 segments, `--draw-distance-scale`, on the user's request; U1 check open).
-- **Next:** S2.4 is done (U1 check pending); remaining Phase 2: S2.9 table ends (S2.5 is done, U1 pending). Your tasks: **User to-do** above (S2.3 + S2.5 + S2.6 + S2.9 U1 checks first).
+  S2.9 (draw distance x1.25 = 17.5 segments, `--draw-distance-scale`, on the user's request; U1 check open), S2.4 (Mulholland,
+  drag strip), S2.6 rest (Mulholland mirror), S2.7 (the Aqueduct; U1 check open).
+- **Next:** every race kind is now drawn by the enhanced view (S2.7 Aqueduct done, U1 pending); remaining Phase 2: S2.9 (table ends per mode, far scenery fade, opponent at distance, haze, mirror distance), then S2.8 (performance pass, stage 1 acceptance). Your tasks: **User to-do** above (the U1 checks).
 - Escalation rule: a subtask that fails twice on Sonnet → new Opus session with a 5-line note
   (symptom, file, what was tried). Never carry an old transcript over.
 
@@ -73,7 +75,7 @@ Design: `ENHANCED.md` (section numbers below). Stage 1 = S2.1-S2.8, stage 2 = S2
 | S2.4 | Mulholland (banks `BL/BR`, hillsides, drop-offs, guard rails, trusses, own sky) and the drag strip (modes 2/4: `L2/R2/C2`, flat, barrier walls) (§3.2) | S | M | done 2026-10-29, U1 pending |
 | S2.5 | Sprites (§3.6): SR2_SHP format-A shapes at continuous scale, signs, banners, opponent and police from native LIB3 pictures, start tree and starter; remove every passthrough | S | L | done 2026-10-29 (modes 0, 1 objects 2026-10-16; opponent, police, start tree, starter 2026-10-29), U1 pending |
 | S2.6 | Mirror (§3.7) and the town cruise check (§3.8) | S | M | done 2026-10-30 (modes 0, 1 2026-10-16; Mulholland mirror and opponent / starter in every mirror 2026-10-30), U1 pending |
-| S2.7 | Aqueduct, mode 8 (§3.3): channel geometry, walls and openings, boxes, pillars, format-B shapes, float roll, rotated opponent, night sky | O | L | |
+| S2.7 | Aqueduct, mode 8 (§3.3): channel geometry, walls and openings, boxes, pillars, format-B shapes, float roll, rotated opponent, night sky | O | L | done 2026-10-30, U1 pending |
 | S2.8 | Performance pass (worker bands if over 8 ms), stage 1 acceptance (§3.10), U1/U2 playtest of all five race kinds | S | M | |
 | S2.9 | Longer draw distance, stage 2 (§4): table ends per mode, far scenery fade, opponent at distance, haze, mirror distance (was E2) | O | L | modes 0, 1 at factor 1.25 done 2026-10-16 (U1 pending); rest open |
 | S2.10 | Widescreen / integer scaling options (was E5) | S | M | |
@@ -225,6 +227,26 @@ Notes:
   past the course for Mulholland (0x3DD) and the strip (0x58) at the extended distance (S2.9), the strip's `top_band_row`
   culling nuances.
 - S2.6 rest (2026-10-30): the Mulholland mirror is drawn by the enhanced view (`rs.mirror_native` removed): `mir_hill_side` (mirror_hillsides, colour 0x0E, edges at the mirror clip 240 / 319), verge strips and bank-flat ground in `mir_band`, `mir_extras` (trusses, truss end, guard rail with the front's rail phase), the 20-row sky strip of `mirror_draw_backdrop`, Mulholland object types in the `enh_sprite.c` mirror() (0x15 / 0x16, bush groups, obstacle 0x14, no `L/R & 0x20` shapes). The mirror car was already native in every mode; the starter in the mirror now also in mode 0x10. Checks: `enh_compare.py` 21 ok; Mulholland compare run: object calls matched 12084/12084 (front + mirror), mirror edges h ~95 % / v ~95-96 %; `--classic --check` ok.
+- S2.7 (2026-10-30): the Aqueduct (mode 8) is drawn by the enhanced view (`enh_aq.c`; `rs.draws_view` for every mode). The
+  channel is straight with one cross-section per frame (the deformation of `aq_climb_left/_right`, now snapshotted with the
+  wall-top shifts at `enh_frame_begin` and interpolated), so walls, floor, trough, openings, boxes and pillars are planar
+  quads projected exactly with `road_proj_x/_y` (dx = heading, dy = cur_height - pitch) at continuous depth, then rotated
+  about the far floor point of the original's row 14 (middle / left / right end while climbing) by the interpolated roll
+  (x 255/256 as sin256; the roll pair blends the short way round). Far end 4 + 112 x scale; past track_end only joints,
+  trough gaps and openings, past the table its pattern. Concrete below the far floor line (the original's no-roll fill;
+  while rolling the original shows sky there). Outlines 0.4 px (1 px in the compare view), stars 2 output px, sky scroll
+  1/8 (asked in U1). Format-B shapes from their unrotated variant 3 rotated by the roll; floor shapes from group 0 at
+  z 8.5 with true 1/z (groups 2..6 are ~620/z, 0..1 ~345/z: smaller than classic mid-distance, the S2.5 rule). Car: the
+  native unrotated picture of its level rotated by the continuous bank (`enh_prop_car_aq`, `ras_sprite_rot`), starter in
+  the mirror rotated with the roll. Mode 8: raw heading interpolated (no YAW). Mirror: aq_project_mirror at continuous
+  depth 2..56, the original's flags (band [b, b+1] = AQ[b - 1]), its stars and backdrop. The original's y truncation
+  towards zero is emulated (+1 above the eye: wall tops at eye-level matched the original's row tables exactly in
+  `SR_ENH_COMPARE=3`, which now prints `aq row` lines). Compare (`SR_ENH_COMPARE=2`, scale 1, Aqueduct run): edges h
+  97.5 / 95.9 %, v 95.7 / 93.9 %, mirror h 94.3 / 96.7 %, v 94.3 / 97.4 %; the misses are rolled frames (sub-pixel
+  rotation, the concrete beyond the far end), the car's continuous size and the pinned rows 12..14. Render 8.6 ms mean,
+  15.9 ms max per displayed frame (1280x800 2x2, headless). Checks: `--classic --check` ok; `classic_check.py` plain and
+  `--clock` ok on title, race_drag and the new `race_aq` path; `enh_compare.py` unchanged (all ok); faithful smoke 15/15
+  with this exe. Not exercised headless: the mirror car (the demo opponent never fell behind), a hard wall bounce.
 
 ### Phase 3 - Input and settings
 | Id | Task | Model | Size | Status |

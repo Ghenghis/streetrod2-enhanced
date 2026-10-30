@@ -19,6 +19,7 @@
 #define CAR_MAX 1.3             /* SRE: at most 1.3 x native */
 #define TREE_K 21.7             /* the original's 32 x 58 tree at row 4 (z ~ 32) against the 56 x 87 picture */
 #define STARTER_K 12.0          /* starter size 0 at the nearest mirror rows */
+#define DEG (3.14159265358979323846 / 180.0)
 
 unsigned enh_prop_n[4];          /* pictures drawn: front car, mirror car, tree, starter (SR_ENH_TRACE) */
 static u8 buf[160 * 128];
@@ -92,4 +93,40 @@ void enh_prop_starter(double x, double zm)
     double f = fmin(CAR_MAX, STARTER_K / fmax(zm, 1.0)), x0 = x - bitmap_visible_width(d) * f / 2;
     enh_prop_n[3]++;
     ras_sprite(buf, w, h, x0, 0x27 - h * f, x0 + w * f, 0x27, 0x2B);    /* the original pins the feet at y 0x27 */
+}
+
+/* ---------------------------------------------------------------- the Aqueduct (S2.7) */
+
+/* opponent_draw in mode 8: the level's unrotated picture (race_load_graphics_rot: side, rear 3/4, rear, front; the
+ * original rotates them to 7 angles or by the bank angle, and shrinks the rear / front ones) rotated by the continuous
+ * bank angle about its bottom centre (the pivot of drv_rotate), which lands at the rotated anchor. The side and 3/4
+ * views are drawn only level (the original's v == 3) and placed as in the other modes. */
+void enh_prop_car_aq(const enh_snap *b, int view, double sx, double sy, double z, double bank)
+{
+    int s = b->opp_s[view];
+    if (s < 0 || s > 12) return;
+    FarPtr d = ds_far(s == 0 ? DS_rot_side : s == 1 ? DS_rot_r34 : s <= 8 ? DS_rot_rear + 12 : DS_rot_front + 12);
+    int w, h;
+    if (!pic_rect(d, 0, 0, desc_w(d), desc_h(d), &w, &h)) return;
+    double ymax = view ? 0x2B : 0x66, dw = desc_w(d), vis = bitmap_visible_width(d);
+    enh_prop_n[view]++;
+    if (b->opp_special[view]) {                             /* crash / contact: at the original's rect, level */
+        ras_sprite(buf, w, h, b->opp_rx[view], b->opp_ry[view], b->opp_rx[view] + w, b->opp_ry[view] + h, ymax);
+        return;
+    }
+    if (s == 0) { double x0 = fmin(0.0, sx - 0x40 - dw); ras_sprite(buf, w, h, x0, sy, x0 + w, sy + h, ymax); return; }
+    if (s == 1) { ras_sprite(buf, w, h, sx - dw, sy - h + 0x11, sx - dw + w, sy + 0x11, ymax); return; }
+    double f = fmin(CAR_MAX, (view ? CAR_K_MIRROR : CAR_K_FRONT) / fmax(z, 1.0)), a = bank * DEG;
+    ras_sprite_rot(buf, w, h, vis / 2, h, sx, sy, f, cos(a), sin(a), ymax);
+}
+
+/* starter_draw_mirror_aq: the largest starter picture, feet at (x, ybase), rotated with the roll */
+void enh_prop_starter_aq(double x, double ybase, double zm, double roll)
+{
+    FarPtr d = ds_far(DS_start_obj_sizes);
+    int w, h;
+    if (!pic_rect(d, 0, 0, desc_w(d), desc_h(d), &w, &h)) return;
+    double f = fmin(CAR_MAX, STARTER_K / fmax(zm, 1.0)), a = roll * DEG;
+    enh_prop_n[3]++;
+    ras_sprite_rot(buf, w, h, bitmap_visible_width(d) / 2.0, h, x, ybase, f, cos(a), sin(a), 0x2B);
 }
