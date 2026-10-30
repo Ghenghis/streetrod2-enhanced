@@ -288,9 +288,9 @@ Mode 0 uses the normal renderer and data: enhanced in stage 1, switchable separa
 | `--aa 1..4` | 2 | samples per axis; `res_scale × aa ≤ 16` |
 | `--motion-delay MS` | one game frame (110) | 0 = latest snapshot, no interpolation (for alignment checks) |
 | `--enh-modes LIST` | `town,drag,strip,mulholland,aqueduct` | modes drawn enhanced; the others stay original |
-| `--draw-distance N` | 60 (stage 2) | 14..120 segments |
-| `--draw-distance-scale X` | 1.25 | 1..4: the draw distance as a multiple of the original's 14 segments (S2.9 part 1, modes 0, 1: 17.5 segments); 1 = the original's; picture only; S2.9 generalises it into `--draw-distance` |
-| `--haze 0..100` | 30 (stage 2) | |
+| `--draw-distance N` | 60 (stage 2) | 14..120 segments, every mode (S2.9); picture only |
+| `--draw-distance-scale X` | - | the same as `--draw-distance 14X` (1..8.57; the compare tools use it; 1 = the original's) |
+| `--haze 0..100` | 30 (stage 2) | percent of the sky colour at the far end; 0 = off (S2.9) |
 
 Launcher (S3.2): a "Picture" group with Graphics (enhanced / original), Resolution, Anti-aliasing, Motion, and in
 stage 2 Draw distance and Haze.

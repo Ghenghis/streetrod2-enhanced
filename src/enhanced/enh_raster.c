@@ -3,7 +3,9 @@
  * samples per logical pixel, one palette index per sample. Coordinates given to the fill functions are logical
  * (320 x 200 screen) floats: pixel (x, y) covers [x, x + 1) x [y, y + 1); a sample is inside a polygon when its centre
  * is. Fills are cut to the clip rectangle (ras_clip; the view, or the mirror) and written through a screen door of
- * coverage ras_alpha (1 = opaque; the fade-in of far objects). The resolve averages the aa x aa samples of an output pixel in linear light. */
+ * coverage ras_alpha (1 = opaque; the fade-in of far objects). The resolve averages the aa x aa samples of an output pixel in linear light.
+ * Haze (S2.9, §4 item 5): a sample's high nibble is its haze level (ras_haze, 0..15); the resolve blends its colour
+ * towards the haze colour (ras_haze_target) by level / 15 x the strength, in linear light (extended colours). */
 #include "enh_internal.h"
 
 #include <math.h>
@@ -17,6 +19,9 @@ static struct {
     u8 *buf;
     int ci0, ci1, cj0, cj1; /* clip rectangle in samples (ras_clip) */
     int alpha;              /* screen-door coverage 0..16 (ras_alpha), 16 = opaque */
+    u8 hz;                  /* haze level << 4 of the following fills (ras_haze) */
+    u8 haze_idx;            /* haze colour (palette index) and strength 0..1 at level 15 (ras_haze_target) */
+    double haze_k;
 } rb;
 
 /* 4 x 4 ordered-dither thresholds: a sample is written when its threshold is below the coverage (screen door; the
@@ -36,6 +41,7 @@ bool ras_begin(int S)
     }
     ras_clip(0, ENH_VIEW_Y0, 320, ENH_VIEW_Y1);
     rb.alpha = 16;
+    rb.hz = 0;
     return true;
 }
 
@@ -51,6 +57,20 @@ void ras_clip(double x0, double y0, double x1, double y1)
 }
 
 void ras_alpha(double a) { rb.alpha = a >= 1.0 ? 16 : a <= 0.0 ? 0 : (int)lround(a * 16.0); }
+void ras_haze(int level) { rb.hz = (u8)((level < 0 ? 0 : level > 15 ? 15 : level) << 4); }
+
+void ras_haze_target(double y, double strength)
+{
+    rb.haze_k = strength;
+    if (!rb.buf || strength <= 0) return;
+    int j = (int)floor((y - ENH_VIEW_Y0) * rb.S) + rb.S / 2, n[16] = { 0 }, best = 0;
+    if (j < 0) j = 0;
+    if (j >= rb.h) j = rb.h - 1;
+    const u8 *r = rb.buf + (size_t)j * rb.w;
+    for (int i = 0; i < rb.w; i++) n[r[i] & 15]++;
+    for (int c = 1; c < 16; c++) if (n[c] > n[best]) best = c;
+    rb.haze_idx = (u8)best;
+}
 
 static bool row_in(int j) { return j >= rb.cj0 && j < rb.cj1; }
 
@@ -65,6 +85,7 @@ static void span(int j, double xa, double xb, u8 c)
     if (i1 > rb.ci1) i1 = rb.ci1;
     if (i1 <= i0) return;
     u8 *d = rb.buf + (size_t)j * rb.w;
+    c |= rb.hz;
     if (rb.alpha >= 16) { memset(d + i0, c, (size_t)(i1 - i0)); return; }
     const u8 *t = bayer[j & 3];
     for (int i = i0; i < i1; i++) if (t[i & 3] < rb.alpha) d[i] = c;
@@ -97,6 +118,7 @@ void ras_sprite(const u8 *px, int w, int h, double x0, double y0, double x1, dou
 static void image(const u8 *px, int w, int h, double x0, double y0, double x1, double y1, double ymax, int trans)
 {
     if (!rb.buf || w <= 0 || h <= 0 || x1 <= x0 || y1 <= y0) return;
+    if ((x1 - x0) * rb.S < 1.0 && (y1 - y0) * rb.S < 1.0) return;     /* under one sample (§4 item 3) */
     double S = rb.S, sl = x0 * S, sr = x1 * S, st = (y0 - ENH_VIEW_Y0) * S, sb = (y1 - ENH_VIEW_Y0) * S;
     double sm = (ymax - ENH_VIEW_Y0) * S;
     int i0 = (int)ceil(sl - 0.5), i1 = (int)ceil(sr - 0.5), j0 = (int)ceil(st - 0.5), j1 = (int)ceil(fmin(sb, sm) - 0.5);
@@ -112,7 +134,7 @@ static void image(const u8 *px, int w, int h, double x0, double y0, double x1, d
         u8 *out = rb.buf + (size_t)j * rb.w;
         for (int i = i0; i < i1; i++) {
             int u = (int)((i + 0.5 - sl) * du);
-            if (u >= 0 && u < w && t[i & 3] < rb.alpha && src[u] != trans) out[i] = src[u];
+            if (u >= 0 && u < w && t[i & 3] < rb.alpha && src[u] != trans) out[i] = (u8)(src[u] | rb.hz);
         }
     }
 }
@@ -121,6 +143,7 @@ void ras_sprite_rot(const u8 *px, int w, int h, double pu, double pv, double x, 
                     double ymax)
 {
     if (!rb.buf || w <= 0 || h <= 0 || f <= 0) return;
+    if (w * f * rb.S < 1.0 && h * f * rb.S < 1.0) return;           /* under one sample */
     double S = rb.S, xmin = 1e30, xmax = -1e30, ymn = 1e30, ymx = -1e30;
     for (int k = 0; k < 4; k++) {                           /* the rotated picture's bounding box */
         double U = ((k & 1) ? w : 0) - pu, V = ((k & 2) ? h : 0) - pv;
@@ -145,7 +168,7 @@ void ras_sprite_rot(const u8 *px, int w, int h, double pu, double pv, double x, 
             int u = (int)floor((c * X - s * Y) * k + pu), v = (int)floor((s * X + c * Y) * k + pv);
             if (u < 0 || u >= w || v < 0 || v >= h || t[i & 3] >= rb.alpha) continue;
             u8 p = px[(size_t)v * w + u];
-            if (p != ENH_TRANSPARENT) out[i] = p;
+            if (p != ENH_TRANSPARENT) out[i] = (u8)(p | rb.hz);
         }
     }
 }
@@ -209,14 +232,21 @@ void ras_resolve(const u8 pal[17], const u8 *cover, u32 *out, int rs, int aa)
 {
     if (!rb.buf || rb.S != rs * aa) return;
     gamma_init();
-    u32 rgb[16];
-    u16 lr[16], lg[16], lb[16];
-    for (int i = 0; i < 16; i++) {
-        rgb[i] = enh_pal_rgb(pal[i]);
-        lr[i] = lin_of[rgb[i] >> 16 & 0xFF];
-        lg[i] = lin_of[rgb[i] >> 8 & 0xFF];
-        lb[i] = lin_of[rgb[i] & 0xFF];
+    /* entry = colour | haze level << 4 */
+    u32 rgb[256];
+    u16 lr[256], lg[256], lb[256];
+    u32 hc = enh_pal_rgb(pal[rb.haze_idx & 15]);
+    double hr = lin_of[hc >> 16 & 0xFF], hg = lin_of[hc >> 8 & 0xFF], hb = lin_of[hc & 0xFF];
+    int levels = rb.haze_k > 0 ? 16 : 1;
+    for (int i = 0; i < 16 * levels; i++) {
+        u32 c = enh_pal_rgb(pal[i & 15]);
+        double a = rb.haze_k * (i >> 4) / 15.0;
+        lr[i] = (u16)lround(lin_of[c >> 16 & 0xFF] * (1 - a) + hr * a);
+        lg[i] = (u16)lround(lin_of[c >> 8 & 0xFF] * (1 - a) + hg * a);
+        lb[i] = (u16)lround(lin_of[c & 0xFF] * (1 - a) + hb * a);
+        rgb[i] = i < 16 ? c : (u32)srgb_of[lr[i]] << 16 | (u32)srgb_of[lg[i]] << 8 | srgb_of[lb[i]];
     }
+    for (int i = 16 * levels; i < 256; i++) { lr[i] = lr[i & 15]; lg[i] = lg[i & 15]; lb[i] = lb[i & 15]; rgb[i] = rgb[i & 15]; }
     int ow = 320 * rs, n = aa * aa;
     for (int oy = ENH_VIEW_Y0 * rs; oy < ENH_SPLIT_Y * rs; oy++) {
         const u8 *cov = cover + (oy / rs - ENH_VIEW_Y0) * 320;
@@ -224,12 +254,12 @@ void ras_resolve(const u8 pal[17], const u8 *cover, u32 *out, int rs, int aa)
         int sj = (oy - ENH_VIEW_Y0 * rs) * aa;
         for (int ox = 0; ox < ow; ox++) {
             if (!cov[ox / rs]) continue;
-            if (aa == 1) { o[ox] = rgb[ras_row(sj)[ox] & 15]; continue; }
+            if (aa == 1) { o[ox] = rgb[ras_row(sj)[ox]]; continue; }
             u32 r = 0, g = 0, b = 0;
             for (int dj = 0; dj < aa; dj++) {
                 const u8 *s = ras_row(sj + dj) + ox * aa;
                 for (int di = 0; di < aa; di++) {
-                    u8 c = s[di] & 15;
+                    u8 c = s[di];
                     r += lr[c]; g += lg[c]; b += lb[c];
                 }
             }

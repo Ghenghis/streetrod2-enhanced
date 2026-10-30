@@ -25,7 +25,8 @@ enh_options enh = {
     .aa = 2,
     .motion_delay = 110,
     .modes = ENH_MODE_ALL,
-    .draw_scale = 1.25,
+    .draw_scale = 60.0 / 14.0,
+    .haze = 30,
 };
 
 /* ---------------------------------------------------------------- options */
@@ -78,7 +79,14 @@ int enh_parse_arg(const char *arg, const char *val)
     if (!strcmp(arg, "--aa")) return parse_int(val, 1, 4, &enh.aa) ? 2 : 0;
     if (!strcmp(arg, "--motion-delay")) return parse_int(val, 0, 1000, &enh.motion_delay) ? 2 : 0;
     if (!strcmp(arg, "--enh-modes")) return parse_modes(val, &enh.modes) ? 2 : 0;
-    if (!strcmp(arg, "--draw-distance-scale")) return parse_double(val, 1.0, 4.0, &enh.draw_scale) ? 2 : 0;
+    if (!strcmp(arg, "--draw-distance-scale")) return parse_double(val, 1.0, 120.0 / 14.0, &enh.draw_scale) ? 2 : 0;
+    if (!strcmp(arg, "--draw-distance")) {
+        double n;
+        if (!parse_double(val, 14.0, 120.0, &n)) return 0;
+        enh.draw_scale = n / 14.0;
+        return 2;
+    }
+    if (!strcmp(arg, "--haze")) return parse_int(val, 0, 100, &enh.haze) ? 2 : 0;
     return 0;
 }
 
@@ -231,6 +239,26 @@ static double trk_at(u16 arr, double P)
     int i = (int)f;
     s16 v0 = trk(arr, i);
     return v0 + (P / 64.0 - f) * (s16)(trk(arr, i + 1) - v0);      /* wrap-safe step */
+}
+
+double enh_far_fade(double far_z, double z)
+{
+    double w = fmax(8.0, 0.1 * (far_z - 4.0));
+    return fmin(fmax((far_z - z) / w, 0.0), 1.0);
+}
+
+bool enh_far_opp(const enh_snap *b, double O, double P)
+{
+    bool m = b->mode == 1 || b->mode == 4 || b->mode == 8 || b->mode == 0x10;
+    return m && b->racing && b->opp_s[0] == -1 && b->police_state < 2 && O - P > 13.0 * 64.0;
+}
+
+int enh_haze_level(double far_z, double z)
+{
+    double z0 = 4.0 + 8.0 * 20.0;
+    if (enh.haze <= 0 || far_z <= z0 + 8.0) return 0;
+    double t = fmin(fmax((z - z0) / (far_z - z0), 0.0), 1.0);
+    return (int)lround(15.0 * t * t * (3.0 - 2.0 * t));
 }
 
 double enh_track_yaw(double P) { return trk_at(TRK_YAW, P); }

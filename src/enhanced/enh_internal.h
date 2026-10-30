@@ -65,6 +65,13 @@ extern int enh_toff;
 u16 enh_flag(u16 arr, int s);           /* TRK_L / TRK_R / TRK_C (L2 / R2 / C2 on the strip) and TRK_LANE at segment s */
 s16 enh_bank(u16 arr, int s);           /* TRK_BL / TRK_BR at boundary s */
 
+/* Stage 2 (S2.9, §4): the coverage of an object at depth z near the far end far_z (fades in over the last 10 % of
+ * the distance, at least one segment) and the haze level 0..15 at depth z (smoothstep from 20 segments to far_z) */
+double enh_far_fade(double far_z, double z);
+/* the opponent of snapshot b is ahead beyond the original's 14 rows (no opponent_draw call this frame; not the police
+ * car, which comes from behind): drawn up to the far end from its rear picture (§4 item 4) */
+bool enh_far_opp(const enh_snap *b, double O, double P);
+int enh_haze_level(double far_z, double z);
 /* YAW / HGT at a continuous position P (sub-steps), linear between segments; indices clamped to the track (§1). */
 double enh_track_yaw(double P);
 double enh_track_hgt(double P);
@@ -82,6 +89,8 @@ void ras_poly(const double *xy, int n, u8 colour);                  /* convex po
 void ras_rect(double x0, double y0, double x1, double y1, u8 colour);
 void ras_clip(double x0, double y0, double x1, double y1);         /* fills cut to [x0, x1) x [y0, y1) (ras_begin: view) */
 void ras_alpha(double a);           /* coverage 0..1 of the following fills (screen door; ras_begin: 1) */
+void ras_haze(int level);           /* haze level 0..15 of the following fills (ras_begin: 0; S2.9) */
+void ras_haze_target(double y, double strength);    /* haze colour: the most frequent index of logical row y */
 void ras_resolve(const u8 pal[17], const u8 *cover, u32 *out, int res_scale, int aa);
 void ras_image(const u8 *px, int w, int h, double x0, double y0, double x1, double y1, double ymax);
 #define ENH_TRANSPARENT 0xFF

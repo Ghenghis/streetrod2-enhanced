@@ -9,7 +9,7 @@
  * right end while climbing), cos / sin x 255/256 as sin256. So walls, floor, the trough and the features are planar
  * quads projected exactly (no slices). Segment s carries AQ[s] for the band between boundaries s - 1 and s (the
  * original's band k = AQ[seg + 14 - k]), at depth z = (Pw - P) / 8 + 4 without the original's truncation of the
- * substep and without its pinned rows 12..14; the far end is z = 4 + 112 x --draw-distance-scale, past the finish
+ * substep and without its pinned rows 12..14; the far end is z = 4 + 8 x --draw-distance, past the finish
  * (track_end) the channel is plain (joints, trough gaps and openings only, §8 item 4), past the table its pattern.
  *
  * Painter's order as aq_draw_scene: night sky (colour 1, stars, sky shapes), concrete (colour 5: below the far floor
@@ -40,7 +40,8 @@
 #define XOFF      0.5           /* enh_road.c: projected values -> raster coordinates */
 #define YOFF    (-0.4)
 #define SKY_RATE  (1.0 / 8.0)
-#define FAR_Z     116.0         /* the original's row 14: the far end at --draw-distance-scale 1, the roll centre */
+#define FAR_Z     116.0         /* the original's row 14: the far end at --draw-distance 14, the roll centre */
+#define HAZE_Z0   164.0         /* haze from 20 segments on (enh_haze_level): the channel is cut there in pieces */
 #define FRONT_NEAR 4.0          /* row 0 */
 #define MIR_NEAR  2.0           /* aq_project_mirror: row 0 at z 2, rows 5..7 pinned at 40, 48, 56 */
 #define MIR_FAR   56.0
@@ -208,11 +209,8 @@ static void sky(const aqc *c)
 
 /* ---------------------------------------------------------------- channel */
 
-static void channel(const aqc *c)
+static void channel_piece(const aqc *c, double z0, double z1)
 {
-    double z0 = GEOM_NEAR, z1 = c->zfar, yF = raw_y(c, z1, c->yf);
-    pt h[4] = { rot(c, -4000, yF), rot(c, 4320, yF), rot(c, 4320, 4000), rot(c, -4000, 4000) };
-    poly(h, 4, 5);                                          /* below the far floor line (the original's fill_rows) */
     pt L0 = P3(c, z0, c->xl, c->yf), L1 = P3(c, z1, c->xl, c->yf), R0 = P3(c, z0, c->xr, c->yf), R1 = P3(c, z1, c->xr, c->yf);
     pt T0 = P3(c, z0, c->xtl, c->yt), T1 = P3(c, z1, c->xtl, c->yt), U0 = P3(c, z0, c->xtr, c->yt), U1 = P3(c, z1, c->xtr, c->yt);
     quad_e(T0, T1, L1, L0, 5, -1);
@@ -222,6 +220,24 @@ static void channel(const aqc *c)
     line(R1, R0, 0);
     line(T1, T0, 0x0F);
     line(U1, U0, 0x0F);
+}
+
+/* the channel; hazed (S2.9) in pieces of 8 segments beyond HAZE_Z0, far to near */
+static void channel(const aqc *c)
+{
+    double z0 = GEOM_NEAR, z1 = c->zfar, yF = raw_y(c, z1, c->yf);
+    bool hz = !c->mirror && !c->compare && enh_haze_level(z1, z1) > 0;
+    if (hz) ras_haze(enh_haze_level(z1, z1));
+    pt h[4] = { rot(c, -4000, yF), rot(c, 4320, yF), rot(c, 4320, 4000), rot(c, -4000, 4000) };
+    poly(h, 4, 5);                                          /* below the far floor line (the original's fill_rows) */
+    if (!hz) { channel_piece(c, z0, z1); return; }
+    for (double zb = z1; zb > z0;) {
+        double za = zb > HAZE_Z0 ? fmax(HAZE_Z0, zb - 64.0) : z0;
+        ras_haze(enh_haze_level(z1, (za + zb) / 2.0));
+        channel_piece(c, za, zb);
+        zb = za;
+    }
+    ras_haze(0);
 }
 
 /* a point of the wall (left / right) at fraction t from its foot to its top */
@@ -235,6 +251,7 @@ static void wall_at(const aqc *c, bool right, double t, double *X, double *Y)
 /* the features of band s between depths za (near) and zb (far); zs = the far boundary's depth (joint, shapes) */
 static void band(const aqc *c, u16 f, double za, double zb, double zs)
 {
+    if (!c->mirror && !c->compare) ras_haze(enh_haze_level(c->zfar, (za + zb) / 2.0));
     if (f & 0x400) quad_e(P3(c, za, c->xl, c->yf), P3(c, za, c->xr, c->yf), P3(c, zb, c->xr, c->yf), P3(c, zb, c->xl, c->yf), 0x0F, -1);
     bool in = zs <= c->zfar;
     if ((f & 1) && in) {
@@ -252,17 +269,20 @@ static void band(const aqc *c, u16 f, double za, double zb, double zs)
     }
     if ((f & 0x60) && in) {                                 /* aq_draw_row_shape: set 2, the largest group */
         double fz = c->mirror ? SHAPE_ZT / (4.0 * zs) : SHAPE_ZT / zs, y = raw_y(c, zs, c->yf);
-        ras_alpha(fmin(fmax((c->zfar - zs) / 8.0, 0.0), 1.0));
+        ras_alpha(enh_far_fade(c->zfar, zs));
         if (f & 0x20) shape_b(c, 2, 0, raw_x(c, zs, c->xl + (c->xr - c->xl) / 4.0), y, fz);
         if (f & 0x40) shape_b(c, 2, 0, raw_x(c, zs, c->xr - (c->xr - c->xl) / 8.0), y, fz);
         ras_alpha(1.0);
     }
+    ras_haze(0);
 }
 
 static void trough_run(const aqc *c, double za, double zb)
 {
     if (zb <= za) return;
+    if (!c->mirror && !c->compare) ras_haze(enh_haze_level(c->zfar, (za + zb) / 2.0));
     quad_e(P3(c, zb, c->tl, c->yf), P3(c, za, c->tl, c->yf), P3(c, za, c->tr, c->yf), P3(c, zb, c->tr, c->yf), 2, 0);
+    ras_haze(0);
 }
 
 /* aq_draw_box: p[0..7] = far bottom L, R, far top L, R, near bottom L, R, near top L, R (rotated) */
@@ -311,6 +331,20 @@ static void car_front(const aqc *c)
 {
     const enh_snap *b = c->b;
     int s = b->opp_s[0];
+    if (!c->compare && enh_far_opp(b, c->O, c->P)) {          /* beyond the original's rows (S2.9, §4 item 4) */
+        double z = (c->O - c->P) / 8.0 + 4.0;
+        if (z >= c->zfar) return;
+        pt p = rot(c, raw_x(c, z, c->lat), raw_y(c, z, car_wy(c)));
+        enh_snap q = *b;
+        q.opp_s[0] = 8;
+        q.opp_special[0] = false;
+        ras_alpha(enh_far_fade(c->zfar, z));
+        ras_haze(enh_haze_level(c->zfar, z));
+        enh_prop_car_aq(&q, 0, p.x - XOFF, p.y - YOFF, z, car_bank(c));
+        ras_haze(0);
+        ras_alpha(1.0);
+        return;
+    }
     if (!b->racing || !b->opp_drawn[0] || s < 0 || s > 8) return;
     double z8 = (c->O - c->P) / 8.0;
     if (s == 0) z8 += 16.0;
@@ -364,7 +398,8 @@ static void scene(const aqc *c, const aqband *B, int n, int starter_band, int bs
     for (int i = 0; i < n; i++) {
         const aqband *q = &B[i];
         if ((q->f & 0x90) && q->za < c->zfar) {
-            ras_alpha(fmin(fmax((c->zfar - q->za) / 8.0, 0.0), 1.0));
+            ras_alpha(enh_far_fade(c->zfar, q->za));
+            if (!c->mirror && !c->compare) ras_haze(enh_haze_level(c->zfar, q->za));
             if (q->f & 0x10)
                 box(c, q->za, q->zs, c->xl + (c->xc - c->xl) / 3, c->xr + (c->xc - c->xr) / 3, c->yf + (c->yt - c->yf) / 7);
             if (q->f & 0x80) {
@@ -373,6 +408,7 @@ static void scene(const aqc *c, const aqband *B, int n, int starter_band, int bs
                 box(c, q->za, q->zs, c->xr - d / 8 - d, c->xr - d, c->yt);
             }
             ras_alpha(1.0);
+            ras_haze(0);
         }
         if (i == starter_band) starter(c, bst);
         if (q->car == so) { if (c->mirror) car_mirror(c); else car_front(c); }
@@ -381,14 +417,15 @@ static void scene(const aqc *c, const aqband *B, int n, int starter_band, int bs
 
 static void front(const aqc *c)
 {
-    aqband B[96];
+    aqband B[128];                                          /* up to 121 bands at --draw-distance 120 */
     int n = 0;
     double Pnear = pwof(c, FRONT_NEAR), Pfar = pwof(c, c->zfar);
-    for (int s = (int)ceil(Pfar / 64.0); s > c->seg0 && n < 96; s--) {
+    for (int s = (int)ceil(Pfar / 64.0); s > c->seg0 && n < 128; s--) {
         double Pa = fmax((s - 1) * 64.0, Pnear), Pb = fmin(s * 64.0, Pfar);
         if (Pb > Pa) B[n++] = (aqband){ aqf(c, s), zof(c, Pa), zof(c, Pb), zof(c, s * 64.0), s };
     }
     sky(c);
+    ras_haze_target(ENH_VIEW_Y0 + 1, c->compare ? 0.0 : enh.haze / 100.0);    /* the night sky's fill */
     scene(c, B, n, -1, 0);
     if ((int)floor(c->O / 64.0) <= c->seg0) car_front(c);          /* opponent_draw at row 0, last */
 }
