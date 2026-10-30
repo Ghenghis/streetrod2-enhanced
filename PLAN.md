@@ -160,6 +160,12 @@ Notes:
   strip road-side objects were already enhanced (S2.4). Checks: `--classic --check` ok; `classic_check.py` plain and
   `--clock` ok; `enh_compare.py` equal to before (compare view keeps the original's car); headless demo runs of the Enhanced exe (drag, grudge, Mulholland: no crash; police not exercised, props drawn per
   `SR_ENH_TRACE`); `--scaled 4` race_drag flaky (whole-race divergence also at the previous commit, `--enh-modes none` runs no hook).
+- classic_check wall-clock flake (2026-10-30): the street drag's green light is a tick deadline (`race_drive.c:275`)
+  while the race steps every `pace_ticks(8)`, whose phase depends on load time, so green lands a frame early or late:
+  two deterministic race variants (split at about 3.5 s), each exe (faithful included) lands in either; snapshots
+  (first frame >= 250 ms after the last) also skip short-lived frames now and then. Fix: plain mode tries a path up to
+  `--tries` (4) times, pools the faithful frames of all tries and reruns classic / scaled until their frames are in
+  the pool (the try that passed is printed). `--clock` was never affected.
 - S2.9 part 1 (modes 0 and 1, 2026-10-16, on the user's request "increase the draw in-distance by 25 % for the
   scenery and objects"): `--draw-distance-scale X` (1..4, default 1.25; 1 = the original's 14 segments; `--classic`
   ignores it), one factor for road, walls, objects, fade and table ends (`enh_road.c` `cam_of`, `road`): far end

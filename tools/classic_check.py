@@ -7,7 +7,8 @@ Each path runs on both executables (SDL dummy drivers, own copy of Game/ under w
 with snapshots every SR_SNAPSHOT_MS. The run timing is wall-clock, so the two runs need not snapshot the same moments; a
 path is "ok" when every distinct frame of the classic run is also a frame of the faithful run (and the other way round,
 reported as coverage). Static screens (title, menus) and race frames of the deterministic demo autopilot match exactly
-when the picture is the same. With --scaled N the Enhanced defaults run too (output 320*N x 200*N); their frames,
+when the picture is the same. Wall-clock runs vary (two race variants, skipped short-lived frames), so a path tries up to
+--tries times (default 4): the faithful frames of all tries are pooled, classic / scaled rerun until inside it. With --scaled N the Enhanced defaults run too (output 320*N x 200*N); their frames,
 sampled back to 320x200, must be faithful frames as long as the picture is the scaled EGA one (S2.1); since S2.3 draws
 the race view, that run uses --enh-modes none.
 With --clock the deterministic host clock (SR_ENH_COMPARE=1, ENHANCED.md §5) is checked instead: two --classic runs
@@ -91,27 +92,44 @@ def main():
     ap.add_argument("--enhanced", default=ENHANCED)
     ap.add_argument("--scaled", type=int, default=0, help="also check the Enhanced defaults at --res-scale N")
     ap.add_argument("--clock", action="store_true", help="check the deterministic compare clock instead")
+    ap.add_argument("--tries", type=int, default=4, help="wall-clock runs of each path at most (see main)")
     a = ap.parse_args()
     os.environ["PATH"] = r"C:\msys64\mingw64\bin" + os.pathsep + os.environ.get("PATH", "")
     if a.clock:
         return 0 if all([check_clock(a, name) for name in a.paths or list(PATHS)]) else 1
     ok = True
     for name in a.paths or list(PATHS):
-        f = run(a.faithful, [], name, "faithful")
-        c = run(a.enhanced, ["--classic"], name, "classic")
-        missing = [c[h] for h in c if h not in f]
+        # wall-clock runs vary: the street drag's green light is a tick deadline met one frame early or late (two race
+        # variants), and a snapshot may skip a short-lived frame. Each try runs faithful again (its frames join a pool of
+        # faithful frames) and reruns classic / scaled while they still have frames outside the pool; a real picture
+        # difference is outside every faithful run.
+        f, runs = {}, {"classic": (["--classic"], 1)}
+        if a.scaled:
+            runs["scaled"] = (["--res-scale", str(a.scaled), "--enh-modes", "none"], a.scaled)
+        res = {}
+        for t in range(1, a.tries + 1):
+            for h, v in run(a.faithful, [], name, "faithful").items():
+                f.setdefault(h, v)
+            for tag, (extra, n) in runs.items():
+                if tag not in res or res[tag][1]:
+                    fr = run(a.enhanced, extra, name, tag, n)
+                    res[tag] = (fr, [fr[h] for h in fr if h not in f], t)
+                else:
+                    res[tag] = (res[tag][0], [res[tag][0][h] for h in res[tag][0] if h not in f], res[tag][2])
+            if all(r[0] and not r[1] for r in res.values()):
+                break
+        c, missing, tc = res["classic"]
         good = bool(c) and not missing
         ok &= good
-        print("%-10s %-4s classic %d distinct frames, %d not in the faithful run%s; faithful %d distinct, %d shared"
+        print("%-10s %-4s classic %d distinct frames, %d not in the faithful runs%s; faithful %d distinct, %d shared; try %d/%d"
               % (name, "ok" if good else "FAIL", len(c), len(missing),
-                 (" (" + ", ".join(missing[:5]) + ")") if missing else "", len(f), len(set(f) & set(c))))
+                 (" (" + ", ".join(missing[:5]) + ")") if missing else "", len(f), len(set(f) & set(c)), tc, t))
         if a.scaled:
-            e = run(a.enhanced, ["--res-scale", str(a.scaled), "--enh-modes", "none"], name, "scaled", a.scaled)
-            missing = [e[h] for h in e if h not in f]
+            e, missing, te = res["scaled"]
             ok &= bool(e) and not missing
-            print("%-10s %-4s scaled x%d %d distinct frames, %d not in the faithful run%s"
+            print("%-10s %-4s scaled x%d %d distinct frames, %d not in the faithful runs%s; try %d/%d"
                   % (name, "ok" if e and not missing else "FAIL", a.scaled, len(e), len(missing),
-                     (" (" + ", ".join(missing[:5]) + ")") if missing else ""))
+                     (" (" + ", ".join(missing[:5]) + ")") if missing else "", te, t))
     return 0 if ok else 1
 
 
