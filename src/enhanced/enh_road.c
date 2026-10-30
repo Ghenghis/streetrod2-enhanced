@@ -10,7 +10,7 @@
  *
  * S2.4 adds the drag strip (modes 2, 4: flags L2 / R2 / C2, YAW / HGT / banks at seg + 0xC0, flat, barrier walls) and
  * Mulholland (mode 0x10: banks BL / BR, hillsides, verges, guard rails, trusses, its own sky, outer band 200); their
- * mirror stays the original's pixels except on the strip (S2.6 open for Mulholland).
+ * mirror is the same renderer (S2.6: hillsides, verges, rails, trusses, sky strip).
  *
  * World: a position Pw along the road in sub-steps (64 per segment), lateral x and height y in road units (road
  * 0x5DC..0xCE4, surface y 2000, eye 0x76C). Depth z = (Pw - P) / 8 + 4, so segment seg + k lies at the original's row
@@ -389,15 +389,14 @@ static void guard_rail(const cam *c, int s, const sect *p, int n, int m)
     }
 }
 
-/* scenery_draw_truss (bridges, C & 0x80) over a whole segment, colour 10, lines `N` px thick */
-static void truss(const cam *c, int s, int k, const sect *a, const sect *b)
+/* scenery_draw_truss (bridges, C & 0x80) over a whole segment, colour 10, lines `N` px thick; `alt`: the diagonal's direction */
+static void truss_n(double N, bool alt, const sect *a, const sect *b, const cam *c)
 {
-    double N = dash_width(c, k, b->Pw) + 1, yt1 = proj_y(c, a->Pw, 1600.0), yt2 = proj_y(c, b->Pw, 1600.0);
+    double yt1 = proj_y(c, a->Pw, 1600.0), yt2 = proj_y(c, b->Pw, 1600.0);
     double xl1 = a->xl, xr1 = a->xr, xl2 = b->xl, xr2 = b->xr, yb1 = a->y, yb2 = b->y;
     quad(10, xl1 - N, yt1, xl1, yt1, xl1, yb1 + 1, xl1 - N, yb1 + 1);          /* posts and top bar at the near end */
     quad(10, xr1 + 1, yt1, xr1 + 1 + N, yt1, xr1 + 1 + N, yb1 + 1, xr1 + 1, yb1 + 1);
     quad(10, xl1, yt1, xr1 + 1, yt1, xr1 + 1, yt1 + N, xl1, yt1 + N);
-    bool alt = (s & 1) == 0 || k >= 7;
     for (int sd = 0; sd < 2; sd++) {
         double x1 = sd ? xr1 + 1 : xl1 - N, x2 = sd ? xr2 + 1 : xl2 - N;
         if (alt) quad(10, x1, yb1, x1 + N, yb1, x2 + N, yt2, x2, yt2);
@@ -407,13 +406,20 @@ static void truss(const cam *c, int s, int k, const sect *a, const sect *b)
     }
 }
 
-static void truss_end(const cam *c, int k, const sect *b)
+static void truss(const cam *c, int s, int k, const sect *a, const sect *b)
 {
-    double N = dash_width(c, k, b->Pw) + 1, yt = proj_y(c, b->Pw, 1600.0);
+    truss_n(dash_width(c, k, b->Pw) + 1, (s & 1) == 0 || k >= 7, a, b, c);
+}
+
+static void truss_end_n(const cam *c, double N, const sect *b)
+{
+    double yt = proj_y(c, b->Pw, 1600.0);
     quad(10, b->xl - N, yt, b->xl, yt, b->xl, b->y + 1, b->xl - N, b->y + 1);
     quad(10, b->xr + 1, yt, b->xr + 1 + N, yt, b->xr + 1 + N, b->y + 1, b->xr + 1, b->y + 1);
     quad(10, b->xl, yt, b->xr + 1, yt, b->xr + 1, yt + N, b->xl, yt + N);
 }
+
+static void truss_end(const cam *c, int k, const sect *b) { truss_end_n(c, dash_width(c, k, b->Pw) + 1, b); }
 
 /* mulholland_extras_front: after the row's objects */
 static void extras(const cam *c, int s, int k, const sect *p, int n)
@@ -716,14 +722,21 @@ static void mir_band(const cam *c, int s, int r, const sect *p, int n)
     u16 C = flag(TRK_C, s), L = flag(TRK_L, s), R = flag(TRK_R, s);
     bool cross = C & 1;
     if (cross && (C & 4)) return;
-    bool white = (C & 0x10) && c->seg0 >= 0x169;
+    bool mh = c->mode == 0x10;
+    bool white = (C & 0x10) && c->seg0 >= (mh ? 0x3AD : 0x169);
     bool wide = (c->mode & 6) && c->seg0 - r < c->start_seg + 5;       /* mirror_row_seg = seg - r */
+    bool verge = mh && !(C & 0x80) && enh_track_hgt(c->seg0 * 64.0) - 0x0B <= c->hgt;
+    bool flat_l = !mh || enh_bank(TRK_BL, s + 2) == 0, flat_r = !mh || enh_bank(TRK_BR, s + 2) == 0;
     for (int i = 0; i < n; i++) {
         const sect *a = &p[i], *b = &p[i + 1];                  /* near, far */
         if (b->y > a->y) continue;                              /* faces away */
         if (!cross) {
-            band_quad(9, MIR_X0 - 1.0, b->xl, MIR_X0 - 1.0, a->xl, b, a);
-            band_quad(9, b->xr, 321.0, a->xr, 321.0, b, a);
+            if (verge) {
+                band_quad(2, b->xol - 6, b->xl, a->xol - 6, a->xl, b, a);
+                band_quad(2, b->xr, b->xor_ + 6, a->xr, a->xor_ + 6, b, a);
+            }
+            if (flat_l) band_quad(9, MIR_X0 - 1.0, b->xl, MIR_X0 - 1.0, a->xl, b, a);
+            if (flat_r) band_quad(9, b->xr, 321.0, a->xr, 321.0, b, a);
             band_quad(white ? 0x0F : 1, b->xl, b->xr, a->xl, a->xr, b, a);
         } else {
             if (!(L & 0x80)) band_quad(4, b->xol, b->xl, a->xol, a->xl, b, a);
@@ -794,6 +807,64 @@ static void mir_objects(const cam *c, int r, int pass)
     enh_objects(&b, c->mode, c->compare, pass);
 }
 
+/* mirror_hillsides of row r (boundaries bnd far, bnd + 1 near; `a` near, `b` far slice; q1: the row nearer still) on the
+ * left (sg -1) and the right (sg +1): colour 0x0E from the mirror's edge to the outer band; fall_dir shifts the edge */
+static void mir_hill_side(const cam *c, int bnd, int r, const sect *a, const sect *b, bool first, const sect *q1, int sg)
+{
+    bool left = sg < 0;
+    u16 bank = left ? TRK_BL : TRK_BR;
+    int o = c->fall_dir;
+    if (left ? o == 1 : o == -1) return;
+    if (enh_bank(bank, bnd + 1) == 0) return;                   /* no bank at the near boundary */
+    bool row1 = r == 1, bridge_prev = flag(TRK_C, bnd - 2) & 0x80;
+    double xq = left ? a->xol : a->xor_, xp = left ? b->xol : b->xor_;
+    double ytq = left ? a->yt1 : a->yt2, ytp = left ? b->yt1 : b->yt2;
+    double xe = left ? MIR_X0 : 319.0;
+    if (row1 || !bridge_prev) {
+        double t[8] = { xe, ytq, xq - o, a->y, xp + o, b->y, xe, ytp };
+        poly(0x0E, 4, t);
+        if (row1 && (left ? xp > MIR_X0 : xp < 0x13F)) { double u[6] = { xe, ytq, xp, b->y, xe, b->y }; poly(0x0E, 3, u); }
+        else if (!row1 && enh_bank(bank, bnd + 2) == 0 && (left ? xq > MIR_X0 : xq < 0x13F)) {
+            double u[6] = { xe, ytq, xq, a->y, xe, a->y };
+            poly(0x0E, 3, u);
+        }
+    } else {
+        if (first && q1) {
+            double xq1 = left ? q1->xl : q1->xr, xl_q = left ? a->xl : a->xr;
+            double v[12] = { xe, ytq, xq, a->y, xl_q, a->y, xq1, q1->y, xq1, MIR_Y1, xe, MIR_Y1 };
+            poly(0x0E, 6, v);
+        }
+        double t[8] = { xe, ytq, xq, a->y, xp, b->y, xe, ytp };
+        poly(0x0E, 4, t);
+    }
+}
+
+/* mulholland_extras_mirror: trusses of a bridge, its end, the guard rail (R & 0x8000, post phase from the front's run) */
+static void mir_extras(const cam *c, int bnd, int r, const sect *p, int n)
+{
+    int s = bnd - 1;
+    u16 C = flag(TRK_C, s), R = flag(TRK_R, s);
+    const sect *a = &p[0], *b = &p[n];
+    double N = mir_dash(c, r, b->Pw) + 1;
+    if ((C & 0x80) && (flag(TRK_C, s + 1) & 0x80) && (flag(TRK_C, s + 2) & 0x80))
+        truss_n(N, (bnd & 1) == 0 || r >= 4, a, b, c);
+    if ((C & 0x80) && !(flag(TRK_C, s - 1) & 0x80)) truss_end_n(c, N, b);
+    if (!((R & 0x8000) && !(C & 0x80))) return;
+    int phase = 0;                                              /* DS_rail_phase_seg: the front's farthest run start */
+    for (int k = 14; k > 0; k--)
+        if ((flag(TRK_R, c->seg0 + k) & 0x8000) && !(flag(TRK_R, c->seg0 + k - 1) & 0x8000)) { phase = c->seg0 + k; break; }
+    if (((phase - r - c->seg0 + 7) & 1) != 0) {
+        double x = a->xor_ - 10.0 / (r + 1);
+        edged(5, 2, x, a->yk - 1, x, a->y, a->xor_, a->y, a->xor_, a->yk - 1);
+    }
+    for (int i = 0; i < n; i++) {
+        const sect *q = &p[i], *f = &p[i + 1];
+        quad(5, f->xor_, f->ye - 1, f->xor_, f->yk, q->xor_, q->yk, q->xor_, q->ye - 1);
+        thin(2, f->xor_, f->ye - 1, q->xor_, q->ye - 1);
+        thin(2, f->xor_, f->yk, q->xor_, q->yk);
+    }
+}
+
 /* A picture rectangle of page 2's mirror store (mirror_bg_prepare: frame 2005 at (232, 102), sky 2063 below it) at
  * (dx, dy) logical, opaque */
 static void mir_pic(int sx, int sy, int w, int h, double dx, double dy)
@@ -814,7 +885,8 @@ static void mirror(const cam *c0)
     mir_pic(264, 102, 16, 2, 272, 18);
     ras_clip(MIR_X0, MIR_Y0, 320, MIR_Y1);
     double Pfar = 64.0 * (c.seg0 - 7);
-    mir_pic(232, 129, 80, 2, 240, proj_y(&c, Pfar, SURFACE) - 2.0);
+    if (c.mode == 0x10) mir_pic(232, 129, 80, 20, 240, proj_y(&c, Pfar, SURFACE) - 10.0);
+    else mir_pic(232, 129, 80, 2, 240, proj_y(&c, Pfar, SURFACE) - 2.0);
     bool split = !c.compare;
     for (int r = 7; r >= 1; r--) {
         int bnd = c.seg0 - r, s = bnd - 1;
@@ -826,11 +898,17 @@ static void mirror(const cam *c0)
         sect p[5];
         for (int i = 0; i <= n; i++) p[i] = section(&c, Pa + (Pb - Pa) * i / n);
         if (split) mir_objects(&c, r, ENH_OBJ_OUT);
+        if (c.mode == 0x10 && !(flag(TRK_C, s) & 0x80)) {
+            sect q1 = section(&c, c.compare ? Pa + 64.0 : fmin(Pa + 64.0, c.P - 64.0));
+            for (int i = 0; i < n; i++)
+                for (int sg = -1; sg <= 1; sg += 2) mir_hill_side(&c, bnd, r, &p[i], &p[i + 1], i == 0, &q1, sg);
+        }
         mir_walls(&c, s, p, n, true);
         mir_walls(&c, s, p, n, false);
         mir_band(&c, s, r, p, n);
         mir_objects(&c, r, split ? ENH_OBJ_IN : ENH_OBJ_ALL);
-        if (!c.compare && c.mode == 1 && r < 7 && bnd == c.snap->starter_seg && !DSW(DS_start_active)) {
+        if (c.mode == 0x10) mir_extras(&c, bnd, r, p, n);
+        if (!c.compare && (c.mode & 0x11) && r < 7 && bnd == c.snap->starter_seg && !DSW(DS_start_active)) {
             double l, rr, Pw = 64.0 * bnd;                      /* starter_draw_mirror: centred on the road of the boundary */
             edges_at(&c, bnd, &l, &rr);
             enh_prop_starter(floor((mir_est_x(&c, Pw, l) + mir_est_x(&c, Pw, rr)) / 2.0), mir_z(&c, Pw));
@@ -924,6 +1002,6 @@ bool enh_road_render(const enh_view *v)
     cam c = cam_of(v);
     sky(&c);
     road(&c);
-    if (c.mode != 0x10) mirror(&c);                             /* Mulholland's mirror: the original's pixels */
+    mirror(&c);
     return true;
 }

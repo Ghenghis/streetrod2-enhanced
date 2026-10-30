@@ -237,7 +237,7 @@ static double bush_tab(u16 base, int idx, double d)
 static void bush_group(const ctx *c, double x, int side)
 {
     const enh_bound *b = c->b;
-    double df = c->compare ? b->depth : (b->z - 4.0) / 8.0, Y = b->y;
+    double df = c->compare ? b->depth : b->mirror ? 7.0 + b->z / 64.0 : (b->z - 4.0) / 8.0, Y = b->y;
     int d = b->depth;
     static const double OFS[4] = { 100, 40, 10, 0 };
     double dd = df < 0 ? 0 : df > 3 ? 3 : df, ofs = c->compare ? (d >= 0 && d <= 2 ? OFS[d] : 0) : OFS[(int)dd] + (OFS[(int)dd + (dd < 3)] - OFS[(int)dd]) * (dd - floor(dd));
@@ -353,16 +353,16 @@ static void mirror(const ctx *c)
     bool compare = c->compare;
     u16 L = flag(TRK_L, s), R = flag(TRK_R, s), C = flag(TRK_C, s);
     bool cross = C & 1;
-    int cpu = DSS(DS_cpu_speed), t = 4, u = 0xB;
+    int cpu = DSS(DS_cpu_speed), t = M == 0x10 ? 0x15 : 4, u = M == 0x10 ? 0x16 : 0xB;
     double Y = b->y, span = b->xr - b->xl;
     enum { IN = 0, OUT = 1 };
     if ((C & 0xF000) && !(M & 0x16) && drawn(c, IN)) banner(c, (u16)(C & 0xF000), cross);
     if (b->k >= 7) return;                                              /* mirror_objects: rows 1..6 */
 #define SHAPE(x, side, type, noclamp, out) shape(c, (x), Y, b->depth, 0, (side), (type), (noclamp), 6, (out), 0)
-    if ((L & 0x20) && cpu > 3) SHAPE(b->xl, -1, 0, false, IN);
+    if (M != 0x10 && (L & 0x20) && cpu > 3) SHAPE(b->xl, -1, 0, false, IN);
     if (L & 0x100) {
         if (cross) SHAPE(b->xl, -1, 4, true, IN);
-        else SHAPE((L & 0x200) ? 2 * b->xol - b->xl : b->xol, -1, t, true, OUT);
+        else if (!(M == 0x10 && !b->flat_l)) SHAPE((L & 0x200) ? 2 * b->xol - b->xl : b->xol, -1, t, true, OUT);
     }
     if (!(M & 7) && (L & 0x800)) SHAPE(b->xl, -1, 3, false, IN);
     if (!(M & 7) && (L & 0x1000)) SHAPE(b->xl, 1, 6, false, IN);
@@ -393,20 +393,23 @@ static void mirror(const ctx *c)
         if (L & 0x40) shape(c, b->xl, Y, b->depth, 0, -1, 2, true, 7, IN, 1);    /* hydrants */
         if (R & 0x40) shape(c, b->xr, Y, b->depth, 0, 1, 2, true, 7, IN, 1);
     }
-    if (!cross && (C & 2) && !(M & 6)) SHAPE(b->xor_ - (compare ? floor(span / 8) : span / 8), 1, 9, false, IN);
-    if (R & 0x20) SHAPE(b->xr, 1, 0, false, IN);
+    if (M == 0x10 && (L & 0x10)) bush_group(c, b->xl, 1);
+    if (M == 0x10 && (R & 0x10)) bush_group(c, b->xr, -1);
+    if (!cross && (C & 2) && (M != 0x10 || b->flat_r) && !(M & 6)) SHAPE(b->xor_ - (compare ? floor(span / 8) : span / 8), 1, 9, false, IN);
+    if (M != 0x10 && (R & 0x20)) SHAPE(b->xr, 1, 0, false, IN);
     if (R & 0x100) {
         if (cross) SHAPE(b->xr, 1, 4, true, IN);
-        else SHAPE((R & 0x200) ? 2 * b->xor_ - b->xr : b->xor_, 1, t, true, OUT);
+        else if (!(M == 0x10 && !b->flat_r)) SHAPE((R & 0x200) ? 2 * b->xor_ - b->xr : b->xor_, 1, t, true, OUT);
     }
     if (R & 0x2000) SHAPE(b->xr, 1, 0x12, false, IN);
     if (R & 0x4000) SHAPE(b->xr, 1, 0x13, false, IN);
     if (R & 0x800) SHAPE(b->xr, 1, 3, false, IN);
     if (R & 0x1000) SHAPE(b->xr, -1, 6, false, IN);
-    if (!(M & 7) && (C & 4)) {
+    if ((!(M & 7) && (C & 4)) || (M == 0x10 && (C & 0x1000))) {
         int x6 = (s16)flag(TRK_LANE, s);
         double xs = compare ? floor((s16)(x6 * (int)span) / 16.0) : x6 * span / 16.0;
-        SHAPE(xs + b->xl, x6 < 9 ? -1 : 1, 7, true, IN);
+        if (!(M & 7) && (C & 4)) SHAPE(xs + b->xl, x6 < 9 ? -1 : 1, 7, true, IN);
+        if (M == 0x10 && (C & 0x1000)) SHAPE(xs + b->xl, x6 < 9 ? -1 : 1, 0x14, true, IN);
     }
     if (C & 0x100) SHAPE(b->xr, 1, 5, false, IN);
     if (C & 0x200) SHAPE(b->xr, 1, 0x10, false, IN);

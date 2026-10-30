@@ -116,7 +116,6 @@ static struct {
     bool overlay;           /* a race of an enabled mode is running */
     bool bg;                /* inside a race frame, background layer */
     bool draws_view;        /* the enhanced view is drawn over the EGA picture (S2.3: road modes 0 and 1; S2.4: 2, 4, 0x10) */
-    bool mirror_native;     /* the mirror keeps the original's pixels (Mulholland: its mirror is not drawn yet) */
     bool draws_objects;     /* the enhanced view draws the road-side objects (S2.5: road modes 0 and 1) */
     bool in_objects;        /* inside front_objects (enh_objects_begin .. end) or the mirror's objects */
     bool in_mirror;         /* inside the mirror's objects (enh_mirror_objects_begin .. end) */
@@ -393,7 +392,6 @@ void enh_race_begin(int road_mode)
     rs.overlay = (enh.modes & mode_bit(road_mode)) != 0;
     rs.hold = rs.rendered = false;
     rs.draws_view = rs.overlay && road_mode != 8;       /* S2.3: town, street drag race; S2.4: strip, Mulholland */
-    rs.mirror_native = rs.overlay && road_mode == 0x10; /* the Mulholland mirror: the original's pixels (S2.6 open) */
     enh_toff = (road_mode & 6) ? 0xC0 : 0;
     rs.draws_objects = rs.draws_view;                                       /* S2.5: the same modes */
     rs.in_objects = rs.in_mirror = false;
@@ -418,10 +416,6 @@ static void hold_start(int page)
 {
     rs.hold_off = page == 1 ? PAGE1_OFF : PAGE2_OFF;
     memcpy(rs.hold_fg0, rs.written[page - 1], PAGE_BYTES);
-    if (rs.mirror_native)                                   /* the original's mirror pixels are not the view's */
-        for (int y = ENH_VIEW_Y0; y < ENH_SPLIT_Y; y++)
-            for (int x = 0; x < 320; x++)
-                if (enh_mirror_px(x, y)) rs.hold_fg0[y * EGA_BYTES_PER_LINE + x / 8] |= (u8)(1 << (7 - x % 8));
     memcpy(rs.hold_mask, rs.hold_fg0, PAGE_BYTES);
     for (int y = ENH_VIEW_Y0; y < ENH_SPLIT_Y; y++)
         for (int x = 0; x < 320; x++) rs.hold_px[y - ENH_VIEW_Y0][x] = page_px(rs.hold_off, x, y);
@@ -466,7 +460,6 @@ void enh_race_end(void)
     if (rs.hold) hold_start(rs.shown_page);
     rs.overlay = false;
     rs.draws_view = false;
-    rs.mirror_native = false;
     rs.draws_objects = false;
     rs.in_objects = false;
     rs.bg = false;                                          /* the hold: every later write is foreground */
@@ -510,8 +503,8 @@ void enh_opp_place(int view_id, int rx, int ry, bool special)
 }
 
 /* The car, the start tree and the starter (S2.5): drawn by the enhanced view where it draws the view (not in the
- * compare view, which keeps the original's pixels; not in the Mulholland mirror, S2.6), else a passthrough bracket. */
-static bool prop_native(bool mirror) { return rs.draws_view && compare < 2 && !(mirror && rs.mirror_native); }
+ * compare view, which keeps the original's pixels), else a passthrough bracket. */
+static bool prop_native(bool mirror) { (void)mirror; return rs.draws_view && compare < 2; }
 
 void enh_prop_fg(bool mirror)
 {
@@ -614,7 +607,7 @@ static void cover_build(int page)
 {
     for (int y = ENH_VIEW_Y0; y < ENH_SPLIT_Y; y++)
         for (int x = 0; x < 320; x++)
-            cover[(y - ENH_VIEW_Y0) * 320 + x] = page ? !enh_written(page, x, y) && !(rs.mirror_native && enh_mirror_px(x, y))
+            cover[(y - ENH_VIEW_Y0) * 320 + x] = page ? !enh_written(page, x, y)
                 : !(rs.hold_mask[y * EGA_BYTES_PER_LINE + x / 8] >> (7 - x % 8) & 1)      /* the hold: and the pixel */
                   && page_px(rs.hold_off, x, y) == rs.hold_px[y - ENH_VIEW_Y0][x];    /* still the race picture's */
 }
