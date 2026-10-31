@@ -713,6 +713,9 @@ bool enh_compose(bool (*ega_compose)(u32 *xrgb), u32 *out)
             rstat.n++;
             rstat.sum += dt;
             if (dt > rstat.max) rstat.max = dt;
+            if (trace && rstat.n % 512 == 0)                    /* running figure: a race that is not left (S2.8) */
+                fprintf(trace, "# render so far %llu frames, mean %.3f ms, max %.3f ms\n", (unsigned long long)rstat.n,
+                        rstat.sum / 1e6 / rstat.n, rstat.max / 1e6);
         }
     }
     return true;

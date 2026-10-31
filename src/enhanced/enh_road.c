@@ -662,11 +662,21 @@ static void sky_row(u8 *dst, int S, int src, double shift)
     const u8 *s = sky_src[clampi(src, SKY_Y0, 199) - SKY_Y0];
     double sh = fmod(shift, 320.0);
     if (sh < 0) sh += 320.0;
-    for (int i = 0; i < 320 * S; i++) {
-        int x = (int)floor((i + 0.5) / S - sh);
-        if (x < 0) x += 320;
-        dst[i] = s[x];
+    /* the source column of every sample depends on the shift only: built once per shift (the rows of a frame share it) */
+    static int xmap[320 * 16]; static double map_sh = -1e9; static int map_S;
+    if (S > 16) {                                               /* beyond the documented res_scale * aa <= 16 */
+        for (int i = 0; i < 320 * S; i++) { int x = (int)floor((i + 0.5) / S - sh); dst[i] = s[x < 0 ? x + 320 : x]; }
+        return;
     }
+    if (sh != map_sh || S != map_S) {
+        for (int i = 0; i < 320 * S; i++) {
+            int x = (int)floor((i + 0.5) / S - sh);
+            xmap[i] = x < 0 ? x + 320 : x;
+        }
+        map_sh = sh;
+        map_S = S;
+    }
+    for (int i = 0; i < 320 * S; i++) dst[i] = s[xmap[i]];
 }
 
 /* road_draw_sky_mulholland: one picture (sky, mountains) from page-1 row 0x6E - dy, dy = the car's height over the road
