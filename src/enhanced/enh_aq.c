@@ -358,12 +358,23 @@ static void car_front(const aqc *c)
 static void car_mirror(const aqc *c)
 {
     const enh_snap *b = c->b;
+    enh_snap q;
+    bool far = !c->compare && enh_far_opp_mirror(b, c->O, c->P);      /* beyond the original's rows (§4 item 7) */
+    if (far) {
+        q = *b;
+        q.opp_s[1] = 12;
+        q.opp_drawn[1] = true;
+        q.opp_special[1] = false;
+        b = &q;
+    }
     int s = b->opp_s[1];
     if (!b->racing || !b->opp_drawn[1] || s < 9 || s > 12) return;
     double zm = fmax((c->P - c->O) / 8.0, 1.0);
     double sx = 280.0 + (10.0 + c->dx) / 4.0 - (c->cx - c->lat) / zm, sy = raw_y(c, zm, car_wy(c));
     pt p = rot(c, sx, sy);
+    if (far) ras_alpha(enh_far_fade(c->zfar, zm));
     enh_prop_car_aq(b, 1, p.x - XOFF, p.y - YOFF, zm, car_bank(c));
+    ras_alpha(1.0);
 }
 
 static void starter(const aqc *c, int bst)
@@ -447,10 +458,10 @@ static void mirror(const aqc *c)
     stars(c, 0x7FB2, 3, sc, 240, 80, (u8)DSW(DS_star_colour_c));
     /* band r between boundaries seg - r (far) and seg - r + 1 carries AQ[seg - r - 1]; the car behind at seg - r
      * (r >= 1) after it; the starter (boundary starter_seg + 1, rows 0..5) after its band */
-    aqband B[8];
+    aqband B[32];
     int n = 0, bst = c->b->starter_seg + 1, rst = c->seg0 - bst, sb = -1;
     double Pfar = pwof(c, c->zfar), Pnear = pwof(c, c->znear);
-    for (int r = 7; r >= 0; r--) {
+    for (int r = (int)ceil(c->zfar / 8.0); r >= 0; r--) {
         int bnd = c->seg0 - r;
         double Pb = fmax(64.0 * bnd, Pfar), Pa = fmin(64.0 * (bnd + 1), Pnear);
         if (Pa <= Pb) continue;
@@ -522,7 +533,10 @@ bool enh_aq_render(const enh_view *v)
     m.xtl = 0x438 + b->wall_l_shift;
     m.xtr = 0xE88 + b->wall_r_shift;
     m.znear = MIR_NEAR;
-    m.zfar = MIR_FAR;
+    /* the extended mirror (§4 item 7): min(N / 2, 30) rows, never below AQ[0] */
+    int R = enh_mirror_rows(v->compare);
+    while (R > 7 && m.seg0 - R - 1 < 0) R--;
+    m.zfar = R > 7 ? 8.0 * R : MIR_FAR;
     m.synth = INT_MAX;
     set_roll(&m, (m.xl + m.xr) / 2);
     mirror(&m);

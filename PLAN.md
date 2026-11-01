@@ -15,7 +15,7 @@ remove it when it is done.
 
 | Task | What to do | For | Time |
 |---|---|---|---|
-| U1 | **Stage 1 + 2 playtest, all five race kinds** (replaces the U1 rows of S2.1, S2.3+S2.5+S2.6, S2.9 parts 1 and 2, S2.4, S2.5, S2.6 and S2.7). Run `build\sr2-enhanced.exe` (defaults: 1280x800, `--draw-distance 60 --haze 30`) next to `build\sr2-enhanced.exe --classic`; also `--draw-distance 14 --haze 0` and `--draw-distance 120` for the distance checks. **(a) Menus and garage**: same picture as classic, mouse pointer follows the mouse, Alt+Enter full screen. **(b) Town cruise to Burger's and street drag race**: sharp road, kerbs, walls, sky, smooth between the game's frames, same places as classic; sky turns slower when steering (1/8); objects (trees, lamp posts, signs, hydrants, billboards, banners) grow smoothly with no size steps, appear at the far end fading in, trees behind buildings; the town street ahead ends in a house front; past the drag finish plain road, an opponent past the finish stands on the road; after the race stops the picture stays enhanced (no revert to low-res); mirror sharp (road, walls, trees, banners, opponent / police car, starter). Police cars in the cruise. **(c) Drag strip (Grudge Night)**: flat road, barrier walls (red / cyan) smooth, start tree (lamps in sequence, grows as you approach), starter, opponent, mirror. **(d) Mulholland Drive**: hillsides, drop-offs, guard rails, truss bridges at the classic places, smooth over crests; bushes / rocks grow smoothly; sky strip; opponent glued to the road; mirror (hillsides, rails, bridges, opponent, starter); say if the far road covers the mountains. **(e) Aqueduct (night race)**: channel, joint lines, wall openings, centre trough, boxes, pillars, floor shapes, white finish band; steer up a wall (smooth roll, everything glued, opponent tilts) and bump a wall (snaps as the original); stars at 1/8 speed (say if the Aqueduct should keep the original speed); mirror. **(f) Distance and haze at 60**: far road, walls, hills and channel fade into the sky colour (say if haze 30 is too strong / weak, `--haze 0..100`), no popping at the far end, no road over the sky on level stretches, nothing past the finish but plain road, opponent visible far ahead; mirror unchanged (7 segments). **(g) Speed**: does 60 run smoothly on your machine (measured here: 6-8 ms per frame)? Report anything misplaced, flickering, popping, too big or missing | S2.1-S2.9 | 40 min |
+| U1 | **Stage 1 + 2 playtest, all five race kinds** (replaces the U1 rows of S2.1, S2.3+S2.5+S2.6, S2.9 parts 1 and 2, S2.4, S2.5, S2.6 and S2.7). Run `build\sr2-enhanced.exe` (defaults: 1280x800, `--draw-distance 60 --haze 30`) next to `build\sr2-enhanced.exe --classic`; also `--draw-distance 14 --haze 0` and `--draw-distance 120` for the distance checks. **(a) Menus and garage**: same picture as classic, mouse pointer follows the mouse, Alt+Enter full screen. **(b) Town cruise to Burger's and street drag race**: sharp road, kerbs, walls, sky, smooth between the game's frames, same places as classic; sky turns slower when steering (1/8); objects (trees, lamp posts, signs, hydrants, billboards, banners) grow smoothly with no size steps, appear at the far end fading in, trees behind buildings; the town street ahead ends in a house front; past the drag finish plain road, an opponent past the finish stands on the road; after the race stops the picture stays enhanced (no revert to low-res); mirror sharp (road, walls, trees, banners, opponent / police car, starter). Police cars in the cruise. **(c) Drag strip (Grudge Night)**: flat road, barrier walls (red / cyan) smooth, start tree (lamps in sequence, grows as you approach), starter, opponent, mirror. **(d) Mulholland Drive**: hillsides, drop-offs, guard rails, truss bridges at the classic places, smooth over crests; bushes / rocks grow smoothly; sky strip; opponent glued to the road; mirror (hillsides, rails, bridges, opponent, starter); say if the far road covers the mountains. **(e) Aqueduct (night race)**: channel, joint lines, wall openings, centre trough, boxes, pillars, floor shapes, white finish band; steer up a wall (smooth roll, everything glued, opponent tilts) and bump a wall (snaps as the original); stars at 1/8 speed (say if the Aqueduct should keep the original speed); mirror. **(f) Distance and haze at 60**: far road, walls, hills and channel fade into the sky colour (say if haze 30 is too strong / weak, `--haze 0..100`), no popping at the far end, no road over the sky on level stretches, nothing past the finish but plain road, opponent visible far ahead; mirror reaches 30 segments behind at 60 (7 at `--draw-distance 14`): far objects fade in, the opponent / police car behind visible further back, no jump when it comes within the original's 7 rows; Mulholland: the far road ends at the mountains' foot instead of covering them. **(g) Speed**: does 60 run smoothly on your machine (measured here: 6-8 ms per frame)? Report anything misplaced, flickering, popping, too big or missing | S2.1-S2.9 | 40 min |
 | U3 | Decisions (defaults apply if unanswered), see U3 below | plan | 5 min |
 | U2 | The faithful playtests (U6 in `../StreetRod2/PLAN.md`) are still open. Bugs found there are fixed in the faithful repo first (S5.6) and ported here by hand | engine | - |
 
@@ -29,8 +29,8 @@ remove it when it is done.
   S2.4), S2.5 complete (opponent, police, start tree, starter), S2.6 for modes 0 and 1 (enhanced mirror, town cruise checked; U1 check open), the modes 0 and 1 part of
   S2.9 (draw distance x1.25 = 17.5 segments, `--draw-distance-scale`, on the user's request; U1 check open), S2.4 (Mulholland,
   drag strip), S2.6 rest (Mulholland mirror), S2.7 (the Aqueduct; U1 check open), S2.9 part 2 (`--draw-distance` 60, haze,
-  table ends, far opponent; U1 check open; the mirror distance left).
-- **Next:** S2.9 rest: the mirror distance (§4 item 7) and a Mulholland horizon clip; S2.10 and phase 3 after. S2.8 done 2026-10-31 (timings in its notes). Your tasks: **User to-do** above (the single U1 playtest).
+  table ends, far opponent; U1 check open), S2.9 rest (mirror distance, Mulholland horizon clip; done 2026-11-01, U1 check open).
+- **Next:** S2.10 (widescreen), then phase 3. S2.9 done 2026-11-01. S2.8 done 2026-10-31 (timings in its notes). Your tasks: **User to-do** above (the single U1 playtest).
 - Escalation rule: a subtask that fails twice on Sonnet → new Opus session with a 5-line note
   (symptom, file, what was tried). Never carry an old transcript over.
 
@@ -72,7 +72,7 @@ Design: `ENHANCED.md` (section numbers below). Stage 1 = S2.1-S2.8, stage 2 = S2
 | S2.6 | Mirror (§3.7) and the town cruise check (§3.8) | S | M | done 2026-10-30 (modes 0, 1 2026-10-16; Mulholland mirror and opponent / starter in every mirror 2026-10-30), U1 pending |
 | S2.7 | Aqueduct, mode 8 (§3.3): channel geometry, walls and openings, boxes, pillars, format-B shapes, float roll, rotated opponent, night sky | O | L | done 2026-10-30, U1 pending |
 | S2.8 | Performance pass (worker bands if over 8 ms), stage 1 acceptance (§3.10), U1/U2 playtest of all five race kinds | S | M | done 2026-10-31 (no worker bands needed; U1 pending) |
-| S2.9 | Longer draw distance, stage 2 (§4): table ends per mode, far scenery fade, opponent at distance, haze, mirror distance (was E2) | O | L | part 2 done 2026-10-30 (`--draw-distance` 60, haze, table ends, far opponent; U1 pending); mirror distance open |
+| S2.9 | Longer draw distance, stage 2 (§4): table ends per mode, far scenery fade, opponent at distance, haze, mirror distance (was E2) | O | L | done 2026-11-01, U1 pending |
 | S2.10 | Widescreen / integer scaling options (was E5) | S | M | |
 
 Notes:
@@ -275,6 +275,17 @@ Notes:
   min(N / 2, 30), clamped at segment 0 / the strip's 8; the mirror's row tables, dash index 13 + r, objects' depth and
   the police car behind at distance), a horizon clip for Mulholland, the stage 2 acceptance runs at N in {14, 60, 120}
   (U1 above).
+- S2.9 rest (2026-11-01): mirror distance (§4 item 7): `enh_mirror_rows` = 7 comparing, else floor(N / 2) in 7..30
+  (N = 60: 30), lowered while the farthest row's flags (seg - R - 2) would fall below segment 0 (strip: 8; Aqueduct:
+  AQ[0]); rows 1..7 unchanged. Normal mirror: the sky strip above the new far row, rows R..1, mirror objects in rows
+  1..R - 1 (`enh_sprite.c` mirror(); depth / LOD tables clamp), faded over the far 10 % (`enh_far_fade(32 R, 4 z)`),
+  the starter to R - 1, dashes continuous (index clamps at 24). Aqueduct mirror: `zfar` 8 R (B[32]), the roll centre
+  stays at z 56. Car behind at distance: `enh_far_opp_mirror` (modes 1, 4, 8, 0x10, or police_state >= 2; no level
+  chosen in either view; 7..R rows behind) draws level 12 (the front picture) at the continuous position, faded. Mulholland
+  horizon clip: the part 2 clip (level horizon at `Z_HORIZON`) now in mode 0x10 too; its sky picture is placed by the
+  original's hy = road_proj_y(0xF0, 2000, dy) (race_render.md 3cca), the same level horizon; hillsides stay unclipped.
+  Checks: `--classic --check` ok; `classic_check.py` plain and `--clock` ok (title, race_drag, race_aq); `enh_compare.py`
+  all ok, numbers unchanged; faithful smoke with this exe ok (exit 0, `--jobs 1`).
 
 ### Phase 3 - Input and settings
 | Id | Task | Model | Size | Status |

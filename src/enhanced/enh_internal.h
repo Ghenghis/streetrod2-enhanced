@@ -71,6 +71,11 @@ double enh_far_fade(double far_z, double z);
 /* the opponent of snapshot b is ahead beyond the original's 14 rows (no opponent_draw call this frame; not the police
  * car, which comes from behind): drawn up to the far end from its rear picture (§4 item 4) */
 bool enh_far_opp(const enh_snap *b, double O, double P);
+/* the mirror's rows behind the car (§4 item 7): the original's 7, live min(N / 2, 30); and whether the opponent or the
+ * police car behind lies beyond the original's 7 rows within them (no mirror call this frame), drawn from its front
+ * picture */
+int enh_mirror_rows(bool compare);
+bool enh_far_opp_mirror(const enh_snap *b, double O, double P);
 int enh_haze_level(double far_z, double z);
 /* YAW / HGT at a continuous position P (sub-steps), linear between segments; indices clamped to the track (§1). */
 double enh_track_yaw(double P);

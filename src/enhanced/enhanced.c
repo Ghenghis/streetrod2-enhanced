@@ -253,6 +253,20 @@ bool enh_far_opp(const enh_snap *b, double O, double P)
     return m && b->racing && b->opp_s[0] == -1 && b->police_state < 2 && O - P > 13.0 * 64.0;
 }
 
+int enh_mirror_rows(bool compare)
+{
+    if (compare) return 7;
+    int r = (int)floor(7.0 * enh.draw_scale + 1e-9);
+    return r < 7 ? 7 : r > 30 ? 30 : r;
+}
+
+bool enh_far_opp_mirror(const enh_snap *b, double O, double P)
+{
+    bool m = b->mode == 1 || b->mode == 4 || b->mode == 8 || b->mode == 0x10 || b->police_state >= 2;
+    return m && b->racing && b->opp_s[0] == -1 && b->opp_s[1] == -1 && P - O > 7.0 * 64.0
+        && P - O < enh_mirror_rows(false) * 64.0;
+}
+
 int enh_haze_level(double far_z, double z)
 {
     double z0 = 4.0 + 8.0 * 20.0;

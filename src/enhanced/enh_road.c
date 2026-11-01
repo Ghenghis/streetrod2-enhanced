@@ -21,7 +21,8 @@
  * Stage 2 (S2.9, §4): past the arrays the track is flat and straight (YAW / HGT clamped), without banks and flags but
  * the centre dashes of the course builder's pattern; the far road of a level stretch stops at the horizon (Z_HORIZON),
  * far segments are hazed (raster haze levels), objects fade in over the last 10 %, the opponent ahead beyond the
- * original's 14 rows is drawn from its rear picture, and the town's street ends in a closing house front. */
+ * original's 14 rows is drawn from its rear picture, and the town's street ends in a closing house front. The mirror
+ * reaches min(N / 2, 30) rows behind (the car behind beyond its 7 rows from its front picture), objects fading in. */
 #include "enh_internal.h"
 #include "enhanced.h"
 
@@ -543,13 +544,24 @@ static void car_front(const cam *c)
 static void car_mirror(const cam *c)
 {
     const enh_snap *b = c->snap;
+    enh_snap q;
+    bool far = !c->compare && enh_far_opp_mirror(b, c->O, c->P);      /* beyond the original's rows (§4 item 7) */
+    if (far) {
+        q = *b;
+        q.opp_s[1] = 12;
+        q.opp_drawn[1] = true;
+        q.opp_special[1] = false;
+        b = &q;
+    }
     int s = b->opp_s[1];
     if (c->compare || c->mode == 2 || !c->racing || !b->opp_drawn[1] || s < 9 || s > 12) return;
     double zm = fmax((c->P - c->O) / 8.0, 1.0);
     double dx = 10.0 + enh_track_yaw(c->O) - c->heading, dy = (c->mode & 6) ? 0.0 : enh_track_hgt(c->O) - c->hgt;
     double sx = 280.0 + dx / 4.0 - (c->cx - c->lat) / zm;
     double sy = 36.0 + dy + (SURFACE + b->floor_h - c->cy) / zm;
+    if (far) ras_alpha(enh_far_fade(8.0 * enh_mirror_rows(false), zm));
     enh_prop_car(b, 1, sx, sy, zm);
+    ras_alpha(1.0);
 }
 
 /* the drag strip's start tree: 4 segments past the start line, centred between the road edges of that boundary */
@@ -574,9 +586,10 @@ static void segment(const cam *c, int s, int kband, double Pa, double Pb)
     if (!c->compare) ras_haze(enh_haze_level(c->far_z, ((Pa + Pb) / 2.0 - c->P) / 8.0 + 4.0));
     /* the horizon clip (§4 items 1, 6): beyond the original's rows the road surface of a race stays below the horizon of
      * its own level (the segment's higher end), so a level road ends at the sky panorama and a hill ahead still rises
-     * above it; Mulholland's own sky picture has no horizon row to keep */
+     * above it; Mulholland too: its sky picture's horizon is the original's hy = road_proj_y(0xF0, 2000, dy), the same
+     * level horizon, so the far road no longer covers its mountains (the hillsides stay unclipped) */
     double hclip = ENH_VIEW_Y0;
-    if (c->racing && !c->compare && c->mode != 0x10 && zb > FAR_Z) {
+    if (c->racing && !c->compare && zb > FAR_Z) {
         double dy = (c->mode & 6) ? 0.0 : c->hgt - fmax(enh_track_hgt(Pa), enh_track_hgt(Pb));
         hclip = fmax(hclip, 2.0 * dy + 4.0 * (SURFACE - c->cy) / Z_HORIZON + c->bounce + 60.0 + YOFF);
     }
@@ -855,6 +868,8 @@ static void mir_objects(const cam *c, int r, int pass)
     edges_at(c, bnd, &l, &rr);
     enh_bound b = { .s = bnd - 1, .k = r, .mirror = true, .depth = (r >> 1) + 7, .depth_banner = r + 5, .fade = 1.0 };
     b.z = 4.0 * mir_z(c, Pw);
+    int R = enh_mirror_rows(c->compare);
+    if (R > 7) b.fade = enh_far_fade(32.0 * R, b.z);                   /* the extended mirror's far end (§4 item 7) */
     b.xl = mir_est_x(c, Pw, l);
     b.xr = mir_est_x(c, Pw, rr);
     b.xol = mir_est_x(c, Pw, 0x5DC - c->w);
@@ -952,11 +967,14 @@ static void mirror(const cam *c0)
     mir_pic(232, 104, 80, 25, 240, 20);
     mir_pic(264, 102, 16, 2, 272, 18);
     ras_clip(MIR_X0, MIR_Y0, 320, MIR_Y1);
-    double Pfar = 64.0 * (c.seg0 - 7);
+    /* rows beyond the original's 7 (§4 item 7, min(N / 2, 30)) never reach below segment 0 (the strip: its start 8) */
+    int R = enh_mirror_rows(c.compare), lo = (c.mode & 6) ? 8 : 0;
+    while (R > 7 && c.seg0 - R - 2 < lo) R--;
+    double Pfar = 64.0 * (c.seg0 - R);
     if (c.mode == 0x10) mir_pic(232, 129, 80, 20, 240, proj_y(&c, Pfar, SURFACE) - 10.0);
     else mir_pic(232, 129, 80, 2, 240, proj_y(&c, Pfar, SURFACE) - 2.0);
     bool split = !c.compare;
-    for (int r = 7; r >= 1; r--) {
+    for (int r = R; r >= 1; r--) {
         int bnd = c.seg0 - r, s = bnd - 1;
         double Pb = 64.0 * bnd, Pa = 64.0 * (bnd + 1);
         if (!c.compare) Pa = fmin(Pa, c.P - 64.0);
@@ -976,7 +994,7 @@ static void mirror(const cam *c0)
         mir_band(&c, s, r, p, n);
         mir_objects(&c, r, split ? ENH_OBJ_IN : ENH_OBJ_ALL);
         if (c.mode == 0x10) mir_extras(&c, bnd, r, p, n);
-        if (!c.compare && (c.mode & 0x11) && r < 7 && bnd == c.snap->starter_seg && !DSW(DS_start_active)) {
+        if (!c.compare && (c.mode & 0x11) && r < R && bnd == c.snap->starter_seg && !DSW(DS_start_active)) {
             double l, rr, Pw = 64.0 * bnd;                      /* starter_draw_mirror: centred on the road of the boundary */
             edges_at(&c, bnd, &l, &rr);
             enh_prop_starter(floor((mir_est_x(&c, Pw, l) + mir_est_x(&c, Pw, rr)) / 2.0), mir_z(&c, Pw));

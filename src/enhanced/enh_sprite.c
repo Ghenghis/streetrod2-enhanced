@@ -357,7 +357,7 @@ static void mirror(const ctx *c)
     double Y = b->y, span = b->xr - b->xl;
     enum { IN = 0, OUT = 1 };
     if ((C & 0xF000) && !(M & 0x16) && drawn(c, IN)) banner(c, (u16)(C & 0xF000), cross);
-    if (b->k >= 7) return;                                              /* mirror_objects: rows 1..6 */
+    if (b->k >= enh_mirror_rows(compare)) return;                       /* mirror_objects: rows 1..6 (S2.9: R - 1) */
 #define SHAPE(x, side, type, noclamp, out) shape(c, (x), Y, b->depth, 0, (side), (type), (noclamp), 6, (out), 0)
     if (M != 0x10 && (L & 0x20) && cpu > 3) SHAPE(b->xl, -1, 0, false, IN);
     if (L & 0x100) {
