@@ -291,6 +291,8 @@ Mode 0 uses the normal renderer and data: enhanced in stage 1, switchable separa
 | `--draw-distance N` | 60 (stage 2) | 14..120 segments, every mode (S2.9); picture only |
 | `--draw-distance-scale X` | - | the same as `--draw-distance 14X` (1..8.57; the compare tools use it; 1 = the original's) |
 | `--haze 0..100` | 30 (stage 2) | percent of the sky colour at the far end; 0 = off (S2.9) |
+| `--aspect W:H\|window` | 4:3 | shape of the picture area (16:9, 16:10, ...; `window` fills the window); stretches the picture, menus and mouse keep 320x200 coordinates (S2.10) |
+| `--integer-scale` | off | whole-number scale of the logical picture, black bars (S2.10) |
 
 Launcher (S3.2): a "Picture" group with Graphics (enhanced / original), Resolution, Anti-aliasing, Motion, and in
 stage 2 Draw distance and Haze.

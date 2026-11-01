@@ -27,6 +27,8 @@ enh_options enh = {
     .modes = ENH_MODE_ALL,
     .draw_scale = 60.0 / 14.0,
     .haze = 30,
+    .aspect_w = 4,
+    .aspect_h = 3,
 };
 
 /* ---------------------------------------------------------------- options */
@@ -87,6 +89,17 @@ int enh_parse_arg(const char *arg, const char *val)
         return 2;
     }
     if (!strcmp(arg, "--haze")) return parse_int(val, 0, 100, &enh.haze) ? 2 : 0;
+    if (!strcmp(arg, "--integer-scale")) { enh.integer_scale = true; return 1; }
+    if (!strcmp(arg, "--aspect")) {
+        int w, h;
+        char extra;
+        if (!val) return 0;
+        if (!strcmp(val, "window")) { enh.aspect_w = 0; enh.aspect_h = 1; return 2; }
+        if (sscanf(val, "%d:%d%c", &w, &h, &extra) != 2 || w < 1 || h < 1 || w > 64 * h / 10 || h > 4 * w) return 0;
+        enh.aspect_w = w;
+        enh.aspect_h = h;
+        return 2;
+    }
     return 0;
 }
 

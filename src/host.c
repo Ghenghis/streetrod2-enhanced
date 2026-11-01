@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "opl3.h"
+#include "enhanced/enhanced.h"   /* ENH: presentation options */
 
 #define AUDIO_RATE 49716          /* PORT: the OPL2 sample rate (14.318 MHz / 288), so Nuked-OPL3 runs unresampled */
 #define SPEAKER_AMPLITUDE 5000
@@ -25,8 +26,25 @@ static bool (*frame_source)(u32 *);
 static u32 frame[HOST_FRAME_MAX_W * HOST_FRAME_MAX_H];
 static int frame_w = 320, frame_h = 200;
 static int view_w = 320, view_h = 200;  /* ENH: logical screen size (presentation, mouse); frame_w/h are pixels */
-#define VIEW_W(w) (w)                   /* logical presentation: frame width x 3/4 of it (4:3) */
-#define VIEW_H(w) ((w) * 3 / 4)
+#define VIEW_W(w) (pres_w)              /* ENH: logical presentation size (4:3, or --aspect), set by apply_presentation */
+#define VIEW_H(w) (pres_h)
+static int pres_w = 320, pres_h = 240;  /* ENH: */
+
+/* ENH: presentation (S2.10): --aspect shapes the picture area, --integer-scale keeps whole-number pixel sizes; the
+ * game's coordinates (mouse, menus) stay the logical 320x200 ones, SDL maps the window to the picture. */
+static void apply_presentation(void)
+{
+    int base_h = view_w * 3 / 4;                                    /* the 4:3 height for this frame width */
+    pres_w = view_w;
+    pres_h = base_h;
+    SDL_RendererLogicalPresentation mode = SDL_LOGICAL_PRESENTATION_LETTERBOX;
+    if (!enh.classic) {
+        if (enh.aspect_w > 0) pres_w = (int)((double)base_h * enh.aspect_w / enh.aspect_h + 0.5);
+        else mode = SDL_LOGICAL_PRESENTATION_STRETCH;               /* --aspect window: the picture fills the window */
+        if (enh.integer_scale && enh.aspect_w > 0) mode = SDL_LOGICAL_PRESENTATION_INTEGER_SCALE;
+    }
+    SDL_SetRenderLogicalPresentation(renderer, pres_w, pres_h, mode);
+}
 
 /* Tick clock: since the last rate change (at clock_start_ns), tick n is due at
  * clock_start_ns + n * pit_div / 1193182 s (exact rational arithmetic). */
@@ -65,7 +83,9 @@ bool host_init(const char *dir, int window_scale, bool fullscreen)
     }
     game_dir = SDL_strdup(dir);
     if (window_scale < 1) window_scale = 3;
-    if (!SDL_CreateWindowAndRenderer("Street Rod 2", 320 * window_scale, 240 * window_scale,
+    int win_w = 320 * window_scale;                                     /* ENH: --aspect widens the initial window */
+    if (!enh.classic && enh.aspect_w > 0) win_w = (int)(240.0 * window_scale * enh.aspect_w / enh.aspect_h + 0.5);
+    if (!SDL_CreateWindowAndRenderer("Street Rod 2", win_w, 240 * window_scale,
                                      SDL_WINDOW_RESIZABLE, &window, &renderer)) {
         fprintf(stderr, "window/renderer failed: %s\n", SDL_GetError());
         return false;
@@ -121,7 +141,7 @@ void host_set_frame_source_logical(bool (*compose)(u32 *), int w, int h, int lw,
     view_w = SDL_max(lw, 1);                                    /* ENH: */
     view_h = SDL_max(lh, 1);                                    /* ENH: */
     /* The 200-line picture fills a 4:3 area, as it did on a VGA monitor. */
-    SDL_SetRenderLogicalPresentation(renderer, VIEW_W(view_w), VIEW_H(view_w), SDL_LOGICAL_PRESENTATION_LETTERBOX);   /* ENH: view_w */
+    apply_presentation();                                       /* ENH: was the 4:3 letterbox */
     if (texture) SDL_DestroyTexture(texture);
     texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, frame_w, frame_h);
     SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
@@ -723,11 +743,15 @@ static void process_events(void)
             mouse_dx += ev.motion.xrel;             /* mickeys: window pixels, as the driver's default */
             mouse_dy += ev.motion.yrel;
             {
-                /* game picture size in window coordinates (4:3 letterbox) */
-                int ww = 0, wh = 0;
+                /* game picture size in window coordinates (ENH: the presentation rectangle) */
+                SDL_FRect pr;
+                float vw = 0, vh = 0;
+                if (SDL_GetRenderLogicalPresentationRect(renderer, &pr)) { vw = pr.w; vh = pr.h; }
+                /* the rectangle is in render-output pixels; the events are in window units */
+                int ww = 0, wh = 0, ow = 0, oh = 0;
                 SDL_GetWindowSize(window, &ww, &wh);
-                float vw = (float)ww, vh = (float)wh;
-                if (vw * 3 > vh * 4) vw = vh * 4 / 3; else vh = vw * 3 / 4;
+                SDL_GetCurrentRenderOutputSize(renderer, &ow, &oh);
+                if (ow > 0 && oh > 0) { vw *= (float)ww / ow; vh *= (float)wh / oh; }
                 if (vw >= 1 && vh >= 1) {
                     mickey_x += ev.motion.xrel * 2.0f * (float)view_w / vw;    /* ENH: view_w */
                     mickey_y += ev.motion.yrel * 2.0f * (float)view_h / vh;    /* ENH: view_h */

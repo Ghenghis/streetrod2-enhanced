@@ -26,7 +26,10 @@ typedef struct {
                              * --draw-distance N (14..120 segments, default 60) or --draw-distance-scale X (N = 14 X);
                              * 1 = the original's; picture only (S2.9) */
     int haze;               /* --haze 0..100: far road blended towards the sky colour, percent at the far end (30) */
-    bool track;             /* engine hook gate: the written mask is kept (a race with the overlay on) */
+    int aspect_w, aspect_h; /* --aspect W:H (4:3 default, 16:9, 16:10 ...) or "window" (aspect_w = 0: fill the window):
+                             * shape of the picture area; presentation only, the game's 320x200 coordinates stay (S2.10) */
+    bool integer_scale;     /* --integer-scale: the picture is a whole multiple of its logical size (black bars), off by default */
+    bool track;            /* engine hook gate: the written mask is kept (a race with the overlay on) */
 } enh_options;
 
 extern enh_options enh;
