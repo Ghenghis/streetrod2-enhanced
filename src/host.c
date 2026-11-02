@@ -689,6 +689,13 @@ static u16 xt_scan(SDL_Scancode sc)
     }
 }
 
+int host_xt_from_name(const char *name)    /* ENH: */
+{
+    SDL_Scancode sc = SDL_GetScancodeFromName(name);
+    u16 x = sc == SDL_SCANCODE_UNKNOWN ? 0 : xt_scan(sc);
+    return (x & GREY) ? 0 : x;
+}
+
 static void feed(const u8 *bytes, int n)
 {
     if (!kbd_handler) return;
@@ -761,6 +768,13 @@ static void process_events(void)
             mouse_x = ev.motion.x;
             mouse_y = ev.motion.y;
             break;
+        case SDL_EVENT_GAMEPAD_BUTTON_DOWN:     /* ENH: shoulder buttons shift, Start = Esc (S3.1) */
+        case SDL_EVENT_GAMEPAD_BUTTON_UP:
+            if (gamepad && SDL_GetGamepadID(gamepad) == ev.gbutton.which) {
+                int x = enh_pad_button(ev.gbutton.button, ev.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN);
+                if (x) { u8 b = (u8)(ev.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN ? x : x | 0x80); feed(&b, 1); }
+            }
+            break;
         case SDL_EVENT_GAMEPAD_ADDED:
             if (!gamepad) gamepad = SDL_OpenGamepad(ev.gdevice.which);
             break;
@@ -823,6 +837,8 @@ bool host_joy_read(s16 *x, s16 *y, u8 *buttons)
     if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT)) ax = 32767;
     if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_UP))    ay = -32768;
     if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_DOWN))  ay = 32767;
+    enh_pad_axes(SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER),            /* ENH: triggers = gas / brake */
+                 SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER), &ay);
     u8 b = 0;
     if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_SOUTH)) b |= 1;
     if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_EAST))  b |= 2;

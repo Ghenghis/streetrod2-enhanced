@@ -6,7 +6,7 @@
  *   --fullscreen  start in full screen (Alt+Enter switches)
  *   --check       load and verify the original executable, print a summary and exit (no window)
  *   --run-ms N    developer aid: exit after N ms (headless snapshot runs)
- *   --classic --res-scale N --aa N --motion-delay MS --enh-modes LIST --draw-distance N --haze N --aspect W:H|window --integer-scale   ENH: Enhanced options (src/enhanced/enhanced.h)
+ *   --classic --res-scale N --aa N --motion-delay MS --enh-modes LIST --draw-distance N --haze N --aspect W:H|window --integer-scale --no-gear-keys --key-shift-up KEY --key-shift-down KEY --no-pad-extras   ENH: Enhanced options (src/enhanced/enhanced.h)
  *   adlib | speaker  PORT (launcher): choose the sound card and skip the sound options menu
  *   the original's command-line switches are passed on as they are: 1, nomouse, demo, nouemem, e c v h t (force EGA / CGA / VGA / Hercules / Tandy: skips the video menu)
  */
@@ -26,7 +26,7 @@
 static int usage(const char *prog)
 {
     fprintf(stderr, "usage: %s [--game-dir DIR] [--scale N] [--fullscreen] [--check] [--run-ms N] [--classic] "
-                    "[--res-scale N] [--aa N] [--motion-delay MS] [--enh-modes LIST] [--draw-distance N] [--haze N] [--aspect W:H|window] [--integer-scale] "   /* ENH: */
+                    "[--res-scale N] [--aa N] [--motion-delay MS] [--enh-modes LIST] [--draw-distance N] [--haze N] [--aspect W:H|window] [--integer-scale] [--no-gear-keys] [--key-shift-up KEY] [--key-shift-down KEY] [--no-pad-extras] "   /* ENH: */
                     "[1] [nomouse] [demo] [nouemem] [e|c|v|h|t]\n", prog);
     return 2;
 }

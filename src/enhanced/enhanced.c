@@ -29,6 +29,10 @@ enh_options enh = {
     .haze = 30,
     .aspect_w = 4,
     .aspect_h = 3,
+    .gear_keys = true,
+    .key_shift_up = 0x1E,
+    .key_shift_down = 0x2C,
+    .pad_extras = true,
 };
 
 /* ---------------------------------------------------------------- options */
@@ -89,6 +93,14 @@ int enh_parse_arg(const char *arg, const char *val)
         return 2;
     }
     if (!strcmp(arg, "--haze")) return parse_int(val, 0, 100, &enh.haze) ? 2 : 0;
+    if (!strcmp(arg, "--no-gear-keys")) { enh.gear_keys = false; return 1; }
+    if (!strcmp(arg, "--no-pad-extras")) { enh.pad_extras = false; return 1; }
+    if (!strcmp(arg, "--key-shift-up") || !strcmp(arg, "--key-shift-down")) {
+        int sc = val ? host_xt_from_name(val) : 0;
+        if (!sc) return 0;
+        if (arg[12] == 'u') enh.key_shift_up = sc; else enh.key_shift_down = sc;
+        return 2;
+    }
     if (!strcmp(arg, "--integer-scale")) { enh.integer_scale = true; return 1; }
     if (!strcmp(arg, "--aspect")) {
         int w, h;

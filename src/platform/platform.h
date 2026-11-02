@@ -74,6 +74,7 @@ void kbd_restore(void);                       /* 0001:3194 */
 /* PORT: A / Z during a race: +1 shift up, -1 shift down, 0 none; taking it clears it. Read by the
  * race physics step. Not in the original. */
 s8   kbd_take_shift_dir(void);
+void kbd_push_shift_dir(s8 d);                /* ENH: */
 void kbd_remap_restore(s16 keep_low);         /* 0001:1bea: undo the hot-key remap (saved pairs DS:1FBE) */
 void kbd_hotspot_refresh(void);               /* 0001:1c5c: rebuild the hot-key remap of the current menu + 'M' */
 void kbd_text_mode_on(s16 keep_space);        /* 0001:2fd6: Backspace, ',', '.', Space become keys */

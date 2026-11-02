@@ -65,6 +65,8 @@ void host_mouse_set_relative(bool on);
 /* ---- Joystick (port 201h replacement): first connected gamepad. Axes -32768..32767, buttons bit0 = A,
  * bit1 = B. */
 bool host_joy_read(s16 *x, s16 *y, u8 *buttons);
+/* ENH: XT make code (no E0 prefix) of the key with this SDL name ("A", "Left Shift", "F5"), 0 if unknown */
+int host_xt_from_name(const char *name);
 
 /* ---- PC speaker (PIT channel 2 + port 61h), modelled at PIT-clock resolution.
  *

@@ -29,6 +29,9 @@ typedef struct {
     int aspect_w, aspect_h; /* --aspect W:H (4:3 default, 16:9, 16:10 ...) or "window" (aspect_w = 0: fill the window):
                              * shape of the picture area; presentation only, the game's 320x200 coordinates stay (S2.10) */
     bool integer_scale;     /* --integer-scale: the picture is a whole multiple of its logical size (black bars), off by default */
+    bool gear_keys;         /* --no-gear-keys turns the A / Z shift keys off (default on; the original release has them) */
+    int key_shift_up, key_shift_down;   /* XT make codes of the shift keys: --key-shift-up / --key-shift-down NAME (A = 0x1E, Z = 0x2C) */
+    bool pad_extras;        /* --no-pad-extras: shoulder buttons shift, triggers are gas / brake, Start = Esc (default on) */
     bool track;            /* engine hook gate: the written mask is kept (a race with the overlay on) */
 } enh_options;
 
@@ -69,6 +72,14 @@ void enh_opp_place(int view, int rx, int ry, bool special);
  * the view, else the original's pixels show (passthrough); mirror: the bracket is in the mirror */
 void enh_prop_fg(bool mirror);
 void enh_prop_bg(bool mirror);
+
+/* Input (S3.1). XT make code of the up (dir > 0) or down shift key during a race; 0 = none. --classic: always A / Z. */
+int enh_gear_sc(int dir);
+/* A gamepad button went down / up (host.c): shoulder buttons shift during a race. Returns the XT make code to send to the
+ * game for the button (Start = Esc), or 0. */
+int enh_pad_button(int sdl_button, bool down);
+/* Gamepad stick values as the joystick the game reads (host_joy_read): triggers add gas (up) / brake (down). */
+void enh_pad_axes(int rt, int lt, short *ay);
 
 /* Written mask (ENHANCED.md §2.1), from vga_wr while enh.track: the four plane bytes at `off` before the write
  * (enh_vram_peek) and after it (enh_vram_write). */

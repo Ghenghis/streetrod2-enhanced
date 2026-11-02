@@ -7,6 +7,7 @@
 #include "platform/platform.h"
 
 #include "host.h"
+#include "enhanced/enhanced.h"   /* ENH: */
 
 /* PORT: A / Z shift up / down during a race (not in the original, where Space, the joystick button and
  * the left mouse button are one "shift" control and the physics picks the direction from the pedals).
@@ -20,6 +21,12 @@ s8 kbd_take_shift_dir(void)
     return d;
 }
 
+/* ENH: gamepad shoulder buttons (enh_pad_button) */
+void kbd_push_shift_dir(s8 d)
+{
+    if (DSB(DS_racing) != 0) shift_dir = d;
+}
+
 /* 0001:3014 kbd_isr: SR1 kbd_isr without the demo gating (SR2 has neither the check nor the Esc rule). */
 void kbd_isr(u8 sc)
 {
@@ -30,9 +37,10 @@ void kbd_isr(u8 sc)
     host_port61(p);
 
     if (sc == 0xFF || sc >= 0xE0) return;                 /* E0 / E1 prefixes and overruns ignored */
-    if (DSB(DS_racing) != 0 && (sc == 0x1E || sc == 0x2C || sc == 0x9E || sc == 0xAC)) {
-        if (sc == 0x1E) shift_dir = 1;                    /* PORT: A = shift up (see kbd_take_shift_dir) */
-        else if (sc == 0x2C) shift_dir = -1;              /* PORT: Z = shift down */
+    const int up_sc = enh_gear_sc(1), dn_sc = enh_gear_sc(-1);          /* ENH: bindable, 0 = off (A / Z with --classic) */
+    if (DSB(DS_racing) != 0 && up_sc && dn_sc && ((sc & 0x7F) == up_sc || (sc & 0x7F) == dn_sc)) {   /* ENH: was sc == 0x1E ... */
+        if (sc == up_sc) shift_dir = 1;                   /* PORT: A = shift up (see kbd_take_shift_dir) */
+        else if (sc == dn_sc) shift_dir = -1;             /* PORT: Z = shift down */
         return;                                           /* consumed: no 'A' / 'Z' left in the key slot */
     }
 
