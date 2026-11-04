@@ -587,7 +587,7 @@ static void segment(const cam *c, int s, int kband, double Pa, double Pb)
     /* the horizon clip (§4 items 1, 6): beyond the original's rows the road surface of a race stays below the horizon of
      * its own level (the segment's higher end), so a level road ends at the sky panorama and a hill ahead still rises
      * above it; Mulholland too: its sky picture's horizon is the original's hy = road_proj_y(0xF0, 2000, dy), the same
-     * level horizon, so the far road no longer covers its mountains (the hillsides stay unclipped) */
+     * level horizon, so the far road no longer covers its mountains; its far hillsides and verges stay below it too */
     double hclip = ENH_VIEW_Y0;
     if (c->racing && !c->compare && zb > FAR_Z) {
         double dy = (c->mode & 6) ? 0.0 : c->hgt - fmax(enh_track_hgt(Pa), enh_track_hgt(Pb));
@@ -603,6 +603,7 @@ static void segment(const cam *c, int s, int kband, double Pa, double Pb)
     }
     /* the town's far road stays below the rooftop panorama's base (its fill there is the road colour, §4 item 6) */
     if (split) ras_clip(0, TOWN_HORIZON, 320, ENH_VIEW_Y1);
+    if (c->mode == 0x10 && hclip > ENH_VIEW_Y0) ras_clip(0, hclip, 320, ENH_VIEW_Y1);
     hillsides(c, s, p, n);
     if (hclip > ENH_VIEW_Y0) ras_clip(0, hclip, 320, ENH_VIEW_Y1);
     band(c, s, kband, p, n);
