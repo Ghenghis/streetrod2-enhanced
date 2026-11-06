@@ -44,6 +44,8 @@
 #define SKY_RATE (1.0 / 8.0)    /* sky scroll: 1/8 of the original's 2 px (panorama 4 px) per heading unit (§3.5) */
 #define FAR_Z   116.0           /* the original's row 14: the far end at --draw-distance 14 */
 #define Z_HORIZON 340.0         /* a level road meets the sky panorama's horizon at this depth (S2.9 part 1) */
+#define FAR_FADE 2.0            /* far banks / ground: how fast their rise over the horizon shrinks with depth */
+#define FAR_SLOPE 3.3           /* far banks / ground: width / height of their slopes (the near banks' look) */
 #define TOWN_END 0xB3           /* the last town segment (track_build_all: town 0 .. 0xB3, race road from 0xB4) */
 #define TOWN_HORIZON 63.0       /* the town's fill below the rooftop panorama (sky): the road surface stays below it */
 #define SURFACE 2000.0
@@ -237,7 +239,39 @@ static double tabv(u16 addr, double m, int off)
 
 static double rowf(const cam *c, double Pw) { return Pw / 64.0 - c->seg0; }     /* the boundary's row, continuous */
 
-static void band(const cam *c, int s, int kband, const sect *p, int n)
+/* Mulholland beyond the original's rows: the ground of a road higher than the car's level horizon h0 (a hill ahead) is
+ * not a full-width slab over the mountain panorama but a mound: below h0 it is full width, above it the earth under the
+ * road and its flanks fall from the road edges to h0 at FAR_SLOPE, narrowed by (FAR_Z / z)^FAR_FADE as the far banks'
+ * rise, so the far road always stands on ground (grass beside a flat bank, else the hillside colour). Returns h0, or -1. */
+static double ground_h0(const cam *c, const sect *a)
+{
+    if (c->compare || c->mirror || !c->racing || c->mode != 0x10 || (a->Pw - c->P) / 8.0 + 4.0 <= FAR_Z) return -1.0;
+    return 4.0 * (SURFACE - c->cy) / Z_HORIZON + c->bounce + 60.0 + YOFF;
+}
+
+static double flank(const cam *c, const sect *p, double h0)
+{
+    return FAR_SLOPE * fmax(h0 - p->y, 0.0) * pow(FAR_Z / ((p->Pw - c->P) / 8.0 + 4.0), FAR_FADE);
+}
+
+/* the mounds of segment s's slices, before its bands (a slice's mound reaches below its nearer slices' road) */
+static void mounds(const cam *c, const sect *p, int n, double hclip, bool flat_l, bool flat_r)
+{
+    for (int i = 0; i < n; i++) {
+        const sect *a = &p[i], *b = &p[i + 1];
+        double h0 = ground_h0(c, a);
+        if (b->y >= a->y || h0 <= hclip || fmin(a->y, b->y) >= h0) continue;
+        double fb = flank(c, b, h0), fa = flank(c, a, h0);
+        u8 cl = flat_l ? 9 : 0x0E, cr = flat_r ? 9 : 0x0E;
+        ras_clip(0, hclip, 320, h0);
+        quad(flat_l && flat_r ? 9 : 0x0E, b->xol, b->y, b->xor_, b->y, b->xor_, h0, b->xol, h0);
+        quad(cl, b->xol, b->y, b->xol - fb, h0, a->xol - fa, h0, a->xol, a->y);
+        quad(cr, b->xor_, b->y, a->xor_, a->y, a->xor_ + fa, h0, b->xor_ + fb, h0);
+        ras_clip(0, hclip, 320, ENH_VIEW_Y1);
+    }
+}
+
+static void band(const cam *c, int s, int kband, const sect *p, int n, double hclip)
 {
     u16 C = cflag(c, TRK_C, s), L = cflag(c, TRK_L, s), R = cflag(c, TRK_R, s);
     bool cross = C & 1;
@@ -249,6 +283,7 @@ static void band(const cam *c, int s, int kband, const sect *p, int n)
     bool verge = mh && !(C & 0x80) && enh_track_hgt(c->seg0 * 64.0) - 0x0B <= c->hgt;
     bool flat_l = !mh || enh_bank(TRK_BL, s - 1) == 0, flat_r = !mh || enh_bank(TRK_BR, s - 1) == 0;
     bool white = (C & 0x10) && (!mh || c->seg0 >= 0x3AD);
+    if (mh && !cross && !(C & 0x80)) mounds(c, p, n, hclip, flat_l, flat_r);
     for (int i = 0; i < n; i++) {
         const sect *a = &p[i], *b = &p[i + 1];                  /* near, far */
         if (b->y >= a->y) continue;                             /* faces away (behind a crest) */
@@ -262,8 +297,12 @@ static void band(const cam *c, int s, int kband, const sect *p, int n)
                 double eb = tabv(DS_hill_peak_tab, 17.0 - rowf(c, b->Pw), 4), ea = tabv(DS_hill_peak_tab, 17.0 - rowf(c, a->Pw), 4);
                 lb = b->xl - eb; la = a->xl - ea; rb = b->xr + eb; ra = a->xr + ea;
             }
+            double h0 = ground_h0(c, a);                        /* above h0 the ground is the mound (mounds) */
+            bool mound = (flat_l || flat_r) && h0 > hclip && fmin(a->y, b->y) < h0;
+            if (mound) ras_clip(0, h0, 320, ENH_VIEW_Y1);
             if (flat_l) band_quad(9, lb, b->xl, la, a->xl, b, a);
             if (flat_r) band_quad(9, b->xr, rb, a->xr, ra, b, a);
+            if (mound) ras_clip(0, hclip, 320, ENH_VIEW_Y1);
             band_quad(white ? 0x0F : 1, b->xl, b->xr, a->xl, a->xr, b, a);
         } else {
             if (!(L & 0x80)) band_quad(4, b->xol, b->xl, a->xol, a->xl, b, a);
@@ -296,6 +335,15 @@ static void band(const cam *c, int s, int kband, const sect *p, int n)
 
 static void poly(u8 col, int n, const double *xy) { ras_poly(xy, n, col); }
 
+/* a far bank's top (beyond the original's rows): its rise over the level horizon at Pw (or over the road, if higher)
+ * shrinks by (FAR_Z / z)^FAR_FADE, so tall far banks stay a slope over the mountain panorama, not a slab across it */
+static double far_top(const cam *c, double Pw, double yt)
+{
+    double z = (Pw - c->P) / 8.0 + 4.0;
+    double y = proj_y(c, Pw, SURFACE), hz = fmin(y, y - 4.0 * (SURFACE - c->cy) * (1.0 / z - 1.0 / Z_HORIZON));
+    return yt < hz ? hz - (hz - yt) * pow(FAR_Z / z, FAR_FADE) : yt;
+}
+
 /* front_hillsides of segment s (race_road.c): the banks beside the road as polygons of colour 0x0E from the screen
  * edge to the outer band, on the left (sg -1) and the right (sg +1); `a` near, `b` far (a slice of the segment);
  * the conditions of the original's row (bank in front / behind, bridge neighbour) are the segment's, the geometry is
@@ -314,7 +362,17 @@ static void hill_side(const cam *c, int s, const sect *a, const sect *b, bool fi
     if (bq == 0) return;                                        /* Yq == YT1q: no bank at the near boundary */
     double xq = left ? a->xol : a->xor_, xp = left ? b->xol : b->xor_;
     double ytq = left ? a->yt1 : a->yt2, ytp = left ? b->yt1 : b->yt2;
-    double xe = left ? XEDGE_L : XEDGE_R;
+    double xe = left ? XEDGE_L : XEDGE_R, xea = xe, xeb = xe;
+    /* beyond the original's rows the bank does not run out to the screen edge (a slab over the mountains) but reaches
+     * its top FAR_SLOPE times its height outward of the road, the screen slope of the near banks */
+    if (!c->compare && (a->Pw - c->P) / 8.0 + 4.0 > FAR_Z) {
+        ytq = far_top(c, a->Pw, ytq);
+        ytp = far_top(c, b->Pw, ytp);
+        xea = xq + sg * FAR_SLOPE * fabs(a->y - ytq);
+        xeb = xp + sg * FAR_SLOPE * fabs(b->y - ytp);
+        xea = left ? fmax(xea, xe) : fmin(xea, xe);
+        xeb = left ? fmax(xeb, xe) : fmin(xeb, xe);
+    }
     double ra = rowf(c, a->Pw), rb = rowf(c, b->Pw);
     double W1 = tabv(DS_hill_peak_tab, 15.0 - ra, 0), H1 = tabv(DS_hill_peak_tab, 15.0 - ra, 2);
     double W0 = tabv(DS_hill_peak_tab, 15.0 - rb, 0), H0 = tabv(DS_hill_peak_tab, 15.0 - rb, 2);
@@ -337,18 +395,18 @@ static void hill_side(const cam *c, int s, const sect *a, const sect *b, bool fi
     }
     if (row1 || !bridge_prev) {
         if (a->xol + 0x1E < a->xor_) {
-            double t[8] = { xe, ytq, xq - o, a->y, xp + o, b->y, xe, ytp };
+            double t[8] = { xea, ytq, xq - o, a->y, xp + o, b->y, xeb, ytp };
             poly(0x0E, 4, t);
             bool tri = row1 ? a->y > ytq : bq1 == 0;
-            if (tri && (left ? xq > 0 : xq < 0x13F)) { double u[6] = { xe, ytq, xq, a->y, xe, a->y }; poly(0x0E, 3, u); }
+            if (tri && (left ? xq > 0 : xq < 0x13F)) { double u[6] = { xea, ytq, xq, a->y, xea, a->y }; poly(0x0E, 3, u); }
         }
     } else {
         if (first && q1) {
             double xq1 = left ? q1->xl : q1->xr;
-            double v[12] = { xe, ytq, xq, a->y, xl_q, a->y, xq1, q1->y, xq1, YBOT, xe, YBOT };
+            double v[12] = { xea, ytq, xq, a->y, xl_q, a->y, xq1, q1->y, xq1, YBOT, xea, YBOT };
             poly(0x0E, 6, v);
         }
-        double t[8] = { xe, ytq, xq, a->y, xp, b->y, xe, ytp };
+        double t[8] = { xea, ytq, xq, a->y, xp, b->y, xeb, ytp };
         poly(0x0E, 4, t);
     }
 }
@@ -587,7 +645,7 @@ static void segment(const cam *c, int s, int kband, double Pa, double Pb)
     /* the horizon clip (§4 items 1, 6): beyond the original's rows the road surface of a race stays below the horizon of
      * its own level (the segment's higher end), so a level road ends at the sky panorama and a hill ahead still rises
      * above it; Mulholland too: its sky picture's horizon is the original's hy = road_proj_y(0xF0, 2000, dy), the same
-     * level horizon, so the far road no longer covers its mountains; its far hillsides and verges stay below it too */
+     * level horizon, so the far road no longer covers its mountains; its far verges stay below it too */
     double hclip = ENH_VIEW_Y0;
     if (c->racing && !c->compare && zb > FAR_Z) {
         double dy = (c->mode & 6) ? 0.0 : c->hgt - fmax(enh_track_hgt(Pa), enh_track_hgt(Pb));
@@ -603,10 +661,9 @@ static void segment(const cam *c, int s, int kband, double Pa, double Pb)
     }
     /* the town's far road stays below the rooftop panorama's base (its fill there is the road colour, §4 item 6) */
     if (split) ras_clip(0, TOWN_HORIZON, 320, ENH_VIEW_Y1);
-    if (c->mode == 0x10 && hclip > ENH_VIEW_Y0) ras_clip(0, hclip, 320, ENH_VIEW_Y1);
-    hillsides(c, s, p, n);
+    hillsides(c, s, p, n);                                         /* unclipped: far banks end in their own slope */
     if (hclip > ENH_VIEW_Y0) ras_clip(0, hclip, 320, ENH_VIEW_Y1);
-    band(c, s, kband, p, n);
+    band(c, s, kband, p, n, hclip);
     if (split || hclip > ENH_VIEW_Y0) ras_clip(0, ENH_VIEW_Y0, 320, ENH_VIEW_Y1);
     objects(c, s, split ? ENH_OBJ_IN : ENH_OBJ_ALL);
     tree(c, s);
