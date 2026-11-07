@@ -108,6 +108,7 @@ static void shape(const ctx *c, double x, double y, int depth, int off, int side
                   bool out, int kind)
 {
     if (!drawn(c, out)) return;
+    if (c->b->gclip && (x < c->b->gxl || x > c->b->gxr)) return;     /* no ground under it */
     if (!noclamp && y > 0x65) y = 0x65;
     int d = depth + off;
     if (c->compare) enh_compare_obj(false, rec_kind(c, kind), type, d, side, x, y, 0);
@@ -245,6 +246,9 @@ static void bush_group(const ctx *c, double x, int side)
     double W = bush_tab(DS_bush_group_hw, 2, df), H = bush_tab(DS_bush_group_hw, 0, df);
     double A = bush_tab(DS_bush_group_dx, 0, df), B2 = bush_tab(DS_bush_group_dx, 2, df + 2);
     if (c->compare) { W = (int)W; H = (int)H; A = (int)A; B2 = (int)B2; }
+    /* beyond the tables' last row (12, z = 100) the spacings shrink with the perspective instead of staying at row 12's
+     * pixels (the back bushes, H above the road, otherwise float over the far ground) */
+    else if (!b->mirror && df > 12.0) { double f = 100.0 / b->z; W *= f; H *= f; A *= f; B2 *= f; }
     shape(c, x, Y, d, 0, side, 8, true, 6, false, 0);
     shape(c, W * side + x, Y, d, 0, side, 7, true, 6, false, 0);
     shape(c, (W + A) * side + x, Y, d, 0, side, 8, true, 6, false, 0);

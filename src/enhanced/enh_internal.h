@@ -125,6 +125,8 @@ typedef struct {
     double xl, xr, xol, xor_, xfl, xfr, y, ye, y16;    /* y16: 4 * ye - 3 * y (banner top) */
     double dash;                /* dash width of the row (banner posts) */
     bool flat_l, flat_r;        /* Yq == YT1q, Yq == YT2q (no bank at the row in front) */
+    bool gclip;                 /* ground only from gxl to gxr (Mulholland's far mounds): objects outside it are left out */
+    double gxl, gxr;
 } enh_bound;
 enum { ENH_OBJ_ALL, ENH_OBJ_OUT, ENH_OBJ_IN };      /* all; behind the building line; between road and building line */
 void enh_objects(const enh_bound *b, int mode, bool compare, int pass);

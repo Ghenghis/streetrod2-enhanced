@@ -353,6 +353,21 @@ static double far_top(const cam *c, double Pw, double yt)
     return yt < hz ? hz - (hz - yt) * pow(FAR_Z / z, FAR_FADE) : yt;
 }
 
+/* a bank's outer vertex at slice boundary p (road edge x, top *yt in, out), from its own depth only so that adjacent
+ * slices share it: up to FAR_Z the screen edge; beyond, the top reaches FAR_SLOPE times its height outward of the
+ * road, blended in over FAR_BLEND (no seam between the last screen-wide slice and the first sloped one) */
+#define FAR_BLEND 24.0
+static void far_edge(const cam *c, const sect *p, double x, int sg, double *xe, double *yt)
+{
+    double z = (p->Pw - c->P) / 8.0 + 4.0, e = sg < 0 ? XEDGE_L : XEDGE_R;
+    *xe = e;
+    if (z <= FAR_Z) return;
+    *yt = far_top(c, p->Pw, *yt);
+    double t = fmin((z - FAR_Z) / FAR_BLEND, 1.0), xs = x + sg * FAR_SLOPE * fabs(p->y - *yt);
+    xs = sg < 0 ? fmax(xs, e) : fmin(xs, e);
+    *xe = e + (xs - e) * t * t * (3.0 - 2.0 * t);
+}
+
 /* front_hillsides of segment s (race_road.c): the banks beside the road as polygons of colour 0x0E from the screen
  * edge to the outer band, on the left (sg -1) and the right (sg +1); `a` near, `b` far (a slice of the segment);
  * the conditions of the original's row (bank in front / behind, bridge neighbour) are the segment's, the geometry is
@@ -374,13 +389,9 @@ static void hill_side(const cam *c, int s, const sect *a, const sect *b, bool fi
     double xe = left ? XEDGE_L : XEDGE_R, xea = xe, xeb = xe;
     /* beyond the original's rows the bank does not run out to the screen edge (a slab over the mountains) but reaches
      * its top FAR_SLOPE times its height outward of the road, the screen slope of the near banks */
-    if (!c->compare && (a->Pw - c->P) / 8.0 + 4.0 > FAR_Z) {
-        ytq = far_top(c, a->Pw, ytq);
-        ytp = far_top(c, b->Pw, ytp);
-        xea = xq + sg * FAR_SLOPE * fabs(a->y - ytq);
-        xeb = xp + sg * FAR_SLOPE * fabs(b->y - ytp);
-        xea = left ? fmax(xea, xe) : fmin(xea, xe);
-        xeb = left ? fmax(xeb, xe) : fmin(xeb, xe);
+    if (!c->compare) {
+        far_edge(c, a, xq, sg, &xea, &ytq);
+        far_edge(c, b, xp, sg, &xeb, &ytp);
     }
     double ra = rowf(c, a->Pw), rb = rowf(c, b->Pw);
     double W1 = tabv(DS_hill_peak_tab, 15.0 - ra, 0), H1 = tabv(DS_hill_peak_tab, 15.0 - ra, 2);
@@ -407,7 +418,17 @@ static void hill_side(const cam *c, int s, const sect *a, const sect *b, bool fi
             double t[8] = { xea, ytq, xq - o, a->y, xp + o, b->y, xeb, ytp };
             poly(0x0E, 4, t);
             bool tri = row1 ? a->y > ytq : bq1 == 0;
-            if (tri && (left ? xq > 0 : xq < 0x13F)) { double u[6] = { xea, ytq, xq, a->y, xea, a->y }; poly(0x0E, 3, u); }
+            if (tri && (left ? xq > 0 : xq < 0x13F)) {
+                /* a far bank's front face above the level horizon h0 reaches down to h0 (the mound's flank at the road,
+                 * the ground's clip line), not only to the road: no strip of mountains under it */
+                double h0 = c->compare ? -1.0 : ground_h0(c, a);
+                if (h0 > a->y) {
+                    double xf = xq + sg * flank(c, a, h0), xo = left ? fmin(xea, xf) : fmax(xea, xf);
+                    double u[8] = { xea, ytq, xq, a->y, xf, h0, xo, h0 };
+                    poly(0x0E, 4, u);
+                }
+                else { double u[6] = { xea, ytq, xq, a->y, xea, a->y }; poly(0x0E, 3, u); }
+            }
         }
     } else {
         if (first && q1) {
@@ -572,6 +593,17 @@ static void objects(const cam *c, int s, int pass)
     b.flat_l = c->compare ? ybl == yq : fabs(ybl - yq) < 0.5;
     b.flat_r = c->compare ? ybr == yq : fabs(ybr - yq) < 0.5;
     b.dash = dash_width(c, k, Pw);
+    /* Mulholland's far road above the level horizon h0 stands on a mound only as wide as the road at its top (mounds):
+     * objects beside it (beyond a verge's width of the outer edges) would float over the mountains, so they are left
+     * out until their ground drops below h0 */
+    sect sb = section(c, Pw);
+    double h0 = ground_h0(c, &sb);
+    if (h0 > 0.0 && sb.y < h0) {
+        double tol = fmax(b.xor_ - b.xr, b.xl - b.xol) + 1.0;
+        b.gclip = true;
+        b.gxl = b.xol - tol;
+        b.gxr = b.xor_ + tol;
+    }
     enh_objects(&b, c->mode, c->compare, pass);
 }
 
