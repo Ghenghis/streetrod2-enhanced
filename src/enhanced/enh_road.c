@@ -48,6 +48,7 @@
 #define FAR_SLOPE 3.3           /* far banks / ground: width / height of their slopes (the near banks' look) */
 #define TOWN_END 0xB3           /* the last town segment (track_build_all: town 0 .. 0xB3, race road from 0xB4) */
 #define TOWN_HORIZON 63.0       /* the town's fill below the rooftop panorama (sky): the road surface stays below it */
+#define WATER   8               /* Mulholland: under the bridges, palette entry 8 (dark cyan, fixed; 6/7 are the paint) */
 #define SURFACE 2000.0
 #define EYE     1900.0          /* 0x76C */
 
@@ -283,6 +284,9 @@ static void band(const cam *c, int s, int kband, const sect *p, int n, double hc
     bool verge = mh && !(C & 0x80) && enh_track_hgt(c->seg0 * 64.0) - 0x0B <= c->hgt;
     bool flat_l = !mh || enh_bank(TRK_BL, s - 1) == 0, flat_r = !mh || enh_bank(TRK_BR, s - 1) == 0;
     bool white = (C & 0x10) && (!mh || c->seg0 >= 0x3AD);
+    /* Mulholland's bridges (C & 0x80) span water: live, the space beside and under the deck is filled with it (the
+     * original leaves the sky picture there) */
+    bool water = mh && (C & 0x80) && !c->compare;
     if (mh && !cross && !(C & 0x80)) mounds(c, p, n, hclip, flat_l, flat_r);
     for (int i = 0; i < n; i++) {
         const sect *a = &p[i], *b = &p[i + 1];                  /* near, far */
@@ -297,12 +301,17 @@ static void band(const cam *c, int s, int kband, const sect *p, int n, double hc
                 double eb = tabv(DS_hill_peak_tab, 17.0 - rowf(c, b->Pw), 4), ea = tabv(DS_hill_peak_tab, 17.0 - rowf(c, a->Pw), 4);
                 lb = b->xl - eb; la = a->xl - ea; rb = b->xr + eb; ra = a->xr + ea;
             }
-            double h0 = ground_h0(c, a);                        /* above h0 the ground is the mound (mounds) */
-            bool mound = (flat_l || flat_r) && h0 > hclip && fmin(a->y, b->y) < h0;
-            if (mound) ras_clip(0, h0, 320, ENH_VIEW_Y1);
-            if (flat_l) band_quad(9, lb, b->xl, la, a->xl, b, a);
-            if (flat_r) band_quad(9, b->xr, rb, a->xr, ra, b, a);
-            if (mound) ras_clip(0, hclip, 320, ENH_VIEW_Y1);
+            if (water) {
+                band_quad(WATER, -1.0, b->xl, -1.0, a->xl, b, a);
+                band_quad(WATER, b->xr, 321.0, a->xr, 321.0, b, a);
+            } else {
+                double h0 = ground_h0(c, a);                    /* above h0 the ground is the mound (mounds) */
+                bool mound = (flat_l || flat_r) && h0 > hclip && fmin(a->y, b->y) < h0;
+                if (mound) ras_clip(0, h0, 320, ENH_VIEW_Y1);
+                if (flat_l) band_quad(9, lb, b->xl, la, a->xl, b, a);
+                if (flat_r) band_quad(9, b->xr, rb, a->xr, ra, b, a);
+                if (mound) ras_clip(0, hclip, 320, ENH_VIEW_Y1);
+            }
             band_quad(white ? 0x0F : 1, b->xl, b->xr, a->xl, a->xr, b, a);
         } else {
             if (!(L & 0x80)) band_quad(4, b->xol, b->xl, a->xol, a->xl, b, a);
@@ -505,10 +514,13 @@ static void barriers(const cam *c, int s, const sect *p, int n)
 {
     int v = abs(14 + c->start_seg - s) % 10;
     u8 col = v < 5 ? 0x0B : 4;
+    /* the original's bottom row (poly_fill includes it) reaches below the road edge, where the nearer segment's band,
+     * drawn later, cuts it level at its far row: a stair step per segment. Live, the wall ends on the road edge itself. */
+    double d = c->compare ? 1.0 : 0.0;
     for (int i = 0; i < n; i++) {
         const sect *a = &p[i], *b = &p[i + 1];
-        quad(col, b->xr, b->yk, b->xr, b->y + 1, a->xr, a->y + 1, a->xr, a->yk);
-        quad(col, b->xl, b->yk, b->xl, b->y + 1, a->xl, a->y + 1, a->xl, a->yk);
+        quad(col, b->xr, b->yk, b->xr, b->y + d, a->xr, a->y + d, a->xr, a->yk);
+        quad(col, b->xl, b->yk, b->xl, b->y + d, a->xl, a->y + d, a->xl, a->yk);
     }
 }
 
@@ -874,8 +886,13 @@ static void mir_band(const cam *c, int s, int r, const sect *p, int n)
                 band_quad(2, b->xol - 6, b->xl, a->xol - 6, a->xl, b, a);
                 band_quad(2, b->xr, b->xor_ + 6, a->xr, a->xor_ + 6, b, a);
             }
-            if (flat_l) band_quad(9, MIR_X0 - 1.0, b->xl, MIR_X0 - 1.0, a->xl, b, a);
-            if (flat_r) band_quad(9, b->xr, 321.0, a->xr, 321.0, b, a);
+            if (mh && (C & 0x80) && !c->compare) {          /* bridges: water beside the deck (band) */
+                band_quad(WATER, MIR_X0 - 1.0, b->xl, MIR_X0 - 1.0, a->xl, b, a);
+                band_quad(WATER, b->xr, 321.0, a->xr, 321.0, b, a);
+            } else {
+                if (flat_l) band_quad(9, MIR_X0 - 1.0, b->xl, MIR_X0 - 1.0, a->xl, b, a);
+                if (flat_r) band_quad(9, b->xr, 321.0, a->xr, 321.0, b, a);
+            }
             band_quad(white ? 0x0F : 1, b->xl, b->xr, a->xl, a->xr, b, a);
         } else {
             if (!(L & 0x80)) band_quad(4, b->xol, b->xl, a->xol, a->xl, b, a);
