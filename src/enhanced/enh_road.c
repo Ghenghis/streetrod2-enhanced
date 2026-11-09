@@ -47,7 +47,6 @@
 #define FAR_FADE 2.0            /* far banks / ground: how fast their rise over the horizon shrinks with depth */
 #define FAR_SLOPE 3.3           /* far banks / ground: width / height of their slopes (the near banks' look) */
 #define TOWN_END 0xB3           /* the last town segment (track_build_all: town 0 .. 0xB3, race road from 0xB4) */
-#define TOWN_HORIZON 63.0       /* the town's fill below the rooftop panorama (sky): the road surface stays below it */
 #define WATER   8               /* Mulholland: under the bridges, palette entry 8 (dark cyan, fixed; 6/7 are the paint) */
 #define SURFACE 2000.0
 #define EYE     1900.0          /* 0x76C */
@@ -703,8 +702,8 @@ static void segment(const cam *c, int s, int kband, double Pa, double Pb)
         town_walls(c, s, p, n, true);
         town_walls(c, s, p, n, false);
     }
-    /* the town's far road stays below the rooftop panorama's base (its fill there is the road colour, §4 item 6) */
-    if (split) ras_clip(0, TOWN_HORIZON, 320, ENH_VIEW_Y1);
+    /* the town's far road and sidewalks run on to the walls' vanishing point (eye level, above the rooftop panorama's
+     * base at row 63): clipped there, the far objects and walls stood over the panorama with no ground under them */
     hillsides(c, s, p, n);                                         /* unclipped: far banks end in their own slope */
     if (hclip > ENH_VIEW_Y0) ras_clip(0, hclip, 320, ENH_VIEW_Y1);
     band(c, s, kband, p, n, hclip);
