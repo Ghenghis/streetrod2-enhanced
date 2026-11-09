@@ -731,9 +731,12 @@ bool enh_compose(bool (*ega_compose)(u32 *xrgb), u32 *out)
     }
     if (live) {
         uint64_t c0 = SDL_GetTicksNS();
-        if (rs.hold) {                                      /* the last view, the live palette (fades) */
-            u8 pal[17];
-            for (int i = 0; i < 17; i++) pal[i] = ega_get_palette_reg(i);
+        /* The live palette, as the cockpit around the view: a race's first frame is drawn while the palette is still
+         * black (drv_pal_normal follows road_frame), and the drag strip's "Drivers stage your vehicles!" box waits on
+         * that frame; the hold follows the fades. */
+        u8 pal[17];
+        for (int i = 0; i < 17; i++) pal[i] = ega_get_palette_reg(i);
+        if (rs.hold) {                                      /* the last view */
             cover_build(0);
             /* another picture drawn over the race's (more than half of it): the hold ends, so that its pixels that
              * happen to have the race picture's colour do not show the old view */
@@ -747,7 +750,7 @@ bool enh_compose(bool (*ega_compose)(u32 *xrgb), u32 *out)
         } else if (enh_road_render(&view)) {
             rs.rendered = true;
             cover_build(rs.shown_page);
-            ras_resolve(view.b->pal, cover, out, n, enh.aa);
+            ras_resolve(pal, cover, out, n, enh.aa);
             uint64_t dt = SDL_GetTicksNS() - c0;                /* render time per displayed frame (§3.10) */
             rstat.n++;
             rstat.sum += dt;
