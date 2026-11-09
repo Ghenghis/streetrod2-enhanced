@@ -296,6 +296,17 @@ static void cross_street(const cam *c, int s, const sect *p, int n)
     if (!crossing(c, s - 1)) cross_walk(c, fmax(P0, lo), fmin(P0 + CROSS_WALK, hi));      /* the near sidewalk */
 }
 
+/* the outer edge of a bridge's water beside the deck edge x at p (sg -1 left, +1 right): the screen edge up to the
+ * original's far row; beyond it the water narrows to the deck and is gone at 2 x FAR_Z, so a far bridge's water no
+ * longer runs as a full-width line along the horizon */
+static double water_edge(const cam *c, const sect *p, double x, int sg)
+{
+    double z = (p->Pw - c->P) / 8.0 + 4.0, e = sg < 0 ? -1.0 : 321.0;
+    if (z <= FAR_Z) return e;
+    double t = fmin((z - FAR_Z) / FAR_Z, 1.0);
+    return x + (e - x) * (1.0 - t * t * (3.0 - 2.0 * t));
+}
+
 static void band(const cam *c, int s, int kband, const sect *p, int n, double hclip)
 {
     u16 C = cflag(c, TRK_C, s), L = cflag(c, TRK_L, s), R = cflag(c, TRK_R, s);
@@ -324,13 +335,16 @@ static void band(const cam *c, int s, int kband, const sect *p, int n, double hc
                 band_quad(2, b->xr, b->xor_, a->xr, a->xor_, b, a);
             }
             double lb = -1.0, la = -1.0, rb = 321.0, ra = 321.0;
-            if (mh && c->l16 && s - c->seg0 >= 10) {            /* beside the far rows the ground reaches `ext` only */
+            /* beside the far rows the ground reaches `ext` only (the original; live, where water fills the bridge's sides
+             * and the road goes on past row 14, the ground stays full width: no strip of mountains above the water and
+             * no far road over the panorama) */
+            if (mh && c->l16 && c->compare && s - c->seg0 >= 10) {
                 double eb = tabv(DS_hill_peak_tab, 17.0 - rowf(c, b->Pw), 4), ea = tabv(DS_hill_peak_tab, 17.0 - rowf(c, a->Pw), 4);
                 lb = b->xl - eb; la = a->xl - ea; rb = b->xr + eb; ra = a->xr + ea;
             }
             if (water) {
-                band_quad(WATER, -1.0, b->xl, -1.0, a->xl, b, a);
-                band_quad(WATER, b->xr, 321.0, a->xr, 321.0, b, a);
+                band_quad(WATER, water_edge(c, b, b->xl, -1), b->xl, water_edge(c, a, a->xl, -1), a->xl, b, a);
+                band_quad(WATER, b->xr, water_edge(c, b, b->xr, 1), a->xr, water_edge(c, a, a->xr, 1), b, a);
             } else {
                 double h0 = ground_h0(c, a);                    /* above h0 the ground is the mound (mounds) */
                 bool mound = (flat_l || flat_r) && h0 > hclip && fmin(a->y, b->y) < h0;                if (mound) ras_clip(0, h0, 320, ENH_VIEW_Y1);
@@ -424,7 +438,10 @@ static void hill_side(const cam *c, int s, const sect *a, const sect *b, bool fi
     double W0 = tabv(DS_hill_peak_tab, 15.0 - rb, 0), H0 = tabv(DS_hill_peak_tab, 15.0 - rb, 2);
     double E = tabv(0x7E3A, 15.0 - rb, 0);
     double xl_q = left ? a->xl : a->xr;
-    if (c->l16) {
+    /* the original turns every bank into free-standing peaks while a bridge ends in rows 10..14; live only rows 10..14
+     * (the far side of the valley) do: the nearer and the far rows keep their banks, so the road climbing to the bridge
+     * and the far road do not run over the panorama with no ground beside them */
+    if (c->l16 && (c->compare || (s - c->seg0 >= 10 && s - c->seg0 <= 14))) {
         if (bp < 0) return;                                     /* YT1p <= Yp */
         if (bridge_prev && first && q1) {
             double xq1 = left ? q1->xl : q1->xr;
@@ -440,7 +457,9 @@ static void hill_side(const cam *c, int s, const sect *a, const sect *b, bool fi
         return;
     }
     if (row1 || !bridge_prev) {
-        if (a->xol + 0x1E < a->xor_) {
+        /* the original skips a bank beside a road narrower than 30 px; beyond its rows every far road is, and its banks
+         * (the only ground beside it) would vanish near the horizon */
+        if (a->xol + 0x1E < a->xor_ || (!c->compare && (a->Pw - c->P) / 8.0 + 4.0 > FAR_Z)) {
             double t[8] = { xea, ytq, xq - o, a->y, xp + o, b->y, xeb, ytp };
             poly(0x0E, 4, t);
             bool tri = row1 ? a->y > ytq : bq1 == 0;
