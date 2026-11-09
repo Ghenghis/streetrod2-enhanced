@@ -272,11 +272,38 @@ static void mounds(const cam *c, const sect *p, int n, double hclip, bool flat_l
     }
 }
 
+/* The town's cross streets (intersection segments, C & 5), live view: the original draws nothing there but a one-row kerb
+ * under the far corner's face, so the near corner wall seemed to stand on the road. Each side of the cross street gets
+ * a sidewalk CROSS_WALK deep, from the main road's edges out to the screen edges (the cross street runs across the
+ * view, so its edges are rows); its own road between stays the background's road colour. */
+#define CROSS_WALK 40.0         /* sub-steps (64 per segment): a cross street is 3 segments, its road keeps 7 / 12 of it */
+
+static bool crossing(const cam *c, int s) { return (cflag(c, TRK_C, s) & 5) == 5; }
+
+static void cross_walk(const cam *c, double Pa, double Pb)
+{
+    if (Pb <= Pa) return;
+    sect a = section(c, Pa), b = section(c, Pb);                /* near, far */
+    if (b.y >= a.y) return;
+    band_quad(4, -1.0, b.xl, -1.0, a.xl, &b, &a);
+    band_quad(4, b.xr, 321.0, a.xr, 321.0, &b, &a);
+}
+
+static void cross_street(const cam *c, int s, const sect *p, int n)
+{
+    double lo = p[0].Pw, hi = p[n].Pw, P0 = (s - 1) * 64.0, P1 = s * 64.0;
+    if (!crossing(c, s + 1)) cross_walk(c, fmax(P1 - CROSS_WALK, lo), fmin(P1, hi));      /* the far sidewalk */
+    if (!crossing(c, s - 1)) cross_walk(c, fmax(P0, lo), fmin(P0 + CROSS_WALK, hi));      /* the near sidewalk */
+}
+
 static void band(const cam *c, int s, int kband, const sect *p, int n, double hclip)
 {
     u16 C = cflag(c, TRK_C, s), L = cflag(c, TRK_L, s), R = cflag(c, TRK_R, s);
     bool cross = C & 1;
-    if (cross && (C & 4)) return;                               /* intersection: nothing drawn */
+    if (cross && (C & 4)) {                                     /* intersection: nothing drawn (live: its sidewalks) */
+        if (!c->compare && !c->racing && !c->mirror) cross_street(c, s, p, n);
+        return;
+    }
     bool wide = (c->mode & 6) && s < c->start_seg + 5;
     bool mh = c->mode == 0x10;
     /* Mulholland: the verge strips (colour 2) while the car is not far below the road, the ground (9) beside the road
