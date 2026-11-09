@@ -240,13 +240,15 @@ static double tabv(u16 addr, double m, int off)
 
 static double rowf(const cam *c, double Pw) { return Pw / 64.0 - c->seg0; }     /* the boundary's row, continuous */
 
-/* Mulholland beyond the original's rows: the ground of a road higher than the car's level horizon h0 (a hill ahead) is
- * not a full-width slab over the mountain panorama but a mound: below h0 it is full width, above it the earth under the
- * road and its flanks fall from the road edges to h0 at FAR_SLOPE, narrowed by (FAR_Z / z)^FAR_FADE as the far banks'
- * rise, so the far road always stands on ground (grass beside a flat bank, else the hillside colour). Returns h0, or -1. */
+/* Mulholland and the street drag beyond the original's rows: the ground of a road higher than the car's level horizon h0
+ * (a hill ahead) is not a full-width slab over the mountain panorama but a mound: below h0 it is full width, above it the
+ * earth under the road and its flanks fall from the road edges to h0 at FAR_SLOPE, narrowed by (FAR_Z / z)^FAR_FADE as
+ * the far banks' rise, so the far road always stands on ground (grass beside a flat bank, else the hillside colour).
+ * Returns h0, or -1. */
 static double ground_h0(const cam *c, const sect *a)
 {
-    if (c->compare || c->mirror || !c->racing || c->mode != 0x10 || (a->Pw - c->P) / 8.0 + 4.0 <= FAR_Z) return -1.0;
+    if (c->compare || c->mirror || !c->racing || (c->mode != 0x10 && c->mode != 1) || (a->Pw - c->P) / 8.0 + 4.0 <= FAR_Z)
+        return -1.0;
     return 4.0 * (SURFACE - c->cy) / Z_HORIZON + c->bounce + 60.0 + YOFF;
 }
 
@@ -263,8 +265,7 @@ static void mounds(const cam *c, const sect *p, int n, double hclip, bool flat_l
         double h0 = ground_h0(c, a);
         if (b->y >= a->y || h0 <= hclip || fmin(a->y, b->y) >= h0) continue;
         double fb = flank(c, b, h0), fa = flank(c, a, h0);
-        u8 cl = flat_l ? 9 : 0x0E, cr = flat_r ? 9 : 0x0E;
-        ras_clip(0, hclip, 320, h0);
+        u8 cl = flat_l ? 9 : 0x0E, cr = flat_r ? 9 : 0x0E;        ras_clip(0, hclip, 320, h0);
         quad(flat_l && flat_r ? 9 : 0x0E, b->xol, b->y, b->xor_, b->y, b->xor_, h0, b->xol, h0);
         quad(cl, b->xol, b->y, b->xol - fb, h0, a->xol - fa, h0, a->xol, a->y);
         quad(cr, b->xor_, b->y, a->xor_, a->y, a->xor_ + fa, h0, b->xor_ + fb, h0);
@@ -287,7 +288,7 @@ static void band(const cam *c, int s, int kband, const sect *p, int n, double hc
     /* Mulholland's bridges (C & 0x80) span water: live, the space beside and under the deck is filled with it (the
      * original leaves the sky picture there) */
     bool water = mh && (C & 0x80) && !c->compare;
-    if (mh && !cross && !(C & 0x80)) mounds(c, p, n, hclip, flat_l, flat_r);
+    if (!cross && !(C & 0x80)) mounds(c, p, n, hclip, flat_l, flat_r);    /* Mulholland, street drag (ground_h0) */
     for (int i = 0; i < n; i++) {
         const sect *a = &p[i], *b = &p[i + 1];                  /* near, far */
         if (b->y >= a->y) continue;                             /* faces away (behind a crest) */
@@ -306,8 +307,7 @@ static void band(const cam *c, int s, int kband, const sect *p, int n, double hc
                 band_quad(WATER, b->xr, 321.0, a->xr, 321.0, b, a);
             } else {
                 double h0 = ground_h0(c, a);                    /* above h0 the ground is the mound (mounds) */
-                bool mound = (flat_l || flat_r) && h0 > hclip && fmin(a->y, b->y) < h0;
-                if (mound) ras_clip(0, h0, 320, ENH_VIEW_Y1);
+                bool mound = (flat_l || flat_r) && h0 > hclip && fmin(a->y, b->y) < h0;                if (mound) ras_clip(0, h0, 320, ENH_VIEW_Y1);
                 if (flat_l) band_quad(9, lb, b->xl, la, a->xl, b, a);
                 if (flat_r) band_quad(9, b->xr, rb, a->xr, ra, b, a);
                 if (mound) ras_clip(0, hclip, 320, ENH_VIEW_Y1);
