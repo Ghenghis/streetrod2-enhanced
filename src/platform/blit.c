@@ -11,6 +11,7 @@
  * PORT: the Tandy helpers (0e6c:0002/00c1, 2462, 2487, 24be, 24d8) are not ported (VGA path only). */
 #include "platform/vga.h"
 #include "platform/video.h"
+#include "enhanced/enhanced.h"   /* ENH: */
 
 /* ======================================================================= pointer (§4.7, §4.10) */
 
@@ -175,12 +176,14 @@ void rows_mask_or(FarPtr d, u16 seg, u16 s, u16 m, s16 sstr, s16 wb, s16 h, s16 
     do {
         for (s16 i = (s16)(wb - 2); i >= (wb & 1); i -= 2) {
             u16 ax = vrd16(seg, (u16)(m + i));
+            if (enh.track) enh_vram_opaque16(d.seg, (u16)(d.off + i), (u16)~ax);    /* ENH: opaque pixels */
             ax &= vrd16(d.seg, (u16)(d.off + i));             /* loads the latches */
             ax |= vrd16(seg, (u16)(s + i));
             vwr16(d.seg, (u16)(d.off + i), ax);
         }
         if (wb & 1) {
             u8 al = vrd(seg, m);
+            if (enh.track) enh_vram_opaque16(d.seg, d.off, (u8)~al);                 /* ENH: */
             al &= vrd(d.seg, d.off);
             al |= vrd(seg, s);
             vwr(d.seg, d.off, al);
@@ -213,6 +216,7 @@ void rows_mask_blend(FarPtr d, u16 seg, u16 s, u16 m, s16 sstr, s16 wb, s16 h, s
                 u16 bx = vrd16(d.seg, di);
                 bx &= ax;
                 ax = (u16)~ax;
+                if (enh.track) enh_vram_opaque16(d.seg, di, ax);                    /* ENH: opaque pixels */
                 ax &= vrd16(seg, si);
                 ax |= bx;
                 vwr16(d.seg, di, ax);
@@ -224,6 +228,7 @@ void rows_mask_blend(FarPtr d, u16 seg, u16 s, u16 m, s16 sstr, s16 wb, s16 h, s
             u8 bl = vrd(d.seg, di);
             bl &= al;
             al = (u8)~al;
+            if (enh.track) enh_vram_opaque16(d.seg, di, al);                         /* ENH: */
             al &= vrd(seg, si);
             al |= bl;
             vwr(d.seg, di, al);

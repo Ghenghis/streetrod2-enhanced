@@ -85,6 +85,12 @@ void enh_pad_axes(int rt, int lt, short *ay);
  * (enh_vram_peek) and after it (enh_vram_write). */
 u32 enh_vram_peek(u16 off);
 void enh_vram_write(u16 off, u32 before);
+/* From the masked blits (rows_mask_or / rows_mask_blend): the sprite's opaque pixels of the 16-bit write at seg:off.
+ * In the foreground they show the original's pixel even where it kept its colour (the starter's black jacket drawn
+ * over the original's black sky would otherwise let the enhanced view through). */
+void enh_vram_opaque16(u16 seg, u16 off, u16 bits);
+/* Around an opaque foreground copy (the starter's part copied from page 2): every pixel it touches shows the original. */
+void enh_fg_opaque(bool on);
 /* True when pixel (x, y) of race page 1 or 2 was last written by the foreground (shows the original's pixel). */
 bool enh_written(int page, int x, int y);
 

@@ -49,7 +49,9 @@ void road_draw_starter_slide(void)
         r.w = (s16)(0x60 - d);
         r.sx = (s16)(d - 0x30);
     } else {
+        enh_fg_opaque(true);                                            /* ENH: the copy is opaque */
         drv_blit(ds_far(DS_page2_ptr), back_page(), &r, 1);
+        enh_fg_opaque(false);                                           /* ENH: */
         r.dx = (s16)(r.dx + r.w);
         r.w = 0x30;
         r.sx = 0;

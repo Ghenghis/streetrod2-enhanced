@@ -251,22 +251,26 @@ static double ground_h0(const cam *c, const sect *a)
     return 4.0 * (SURFACE - c->cy) / Z_HORIZON + c->bounce + 60.0 + YOFF;
 }
 
+#define MOUND_MIN_SLOPE 1.5     /* street drag: a far hill's flank width / height at least */
 static double flank(const cam *c, const sect *p, double h0)
 {
-    /* the street drag's open hills keep their slope at any distance (narrowed, a steep far hill became a green spike) */
-    double fade = c->mode == 1 ? 1.0 : pow(FAR_Z / ((p->Pw - c->P) / 8.0 + 4.0), FAR_FADE);
-    return FAR_SLOPE * fmax(h0 - p->y, 0.0) * fade;
+    /* the street drag's open hills are never steeper than MOUND_MIN_SLOPE: narrowed by FAR_FADE alone a tall far hill
+     * became a pair of green spikes, while a low one (the start's gantry hill) stays narrow below the mountains */
+    double h = fmax(h0 - p->y, 0.0), w = FAR_SLOPE * h * pow(FAR_Z / ((p->Pw - c->P) / 8.0 + 4.0), FAR_FADE);
+    return c->mode == 1 ? fmax(w, MOUND_MIN_SLOPE * h) : w;
 }
 
 /* the street drag's hills are open country, not Mulholland's banks: a near hill's ground is full width as in the
- * original's rows (z <= FAR_Z), so its mound's top widens by up to MOUND_FULL beside the road, from 0 at 2 * FAR_Z to the
- * whole view at FAR_Z (no green wedges with sky between them and the near ground when the hill comes close) */
+ * original's rows (z <= FAR_Z), so its mound's top widens by up to MOUND_FULL beside the road, from 0 at
+ * MOUND_BLEND * FAR_Z to the whole view at FAR_Z (no green wedges with sky between them and the near ground when the hill
+ * comes close; a hill farther away stays a mound, the start's gantry hill no slab over the mountains) */
 #define MOUND_FULL 400.0
+#define MOUND_BLEND 1.25
 static double mound_wide(const cam *c, double Pw)
 {
     if (c->mode != 1) return 0.0;
     double z = (Pw - c->P) / 8.0 + 4.0;
-    return MOUND_FULL * fmin(fmax((2.0 * FAR_Z - z) / FAR_Z, 0.0), 1.0);
+    return MOUND_FULL * fmin(fmax((MOUND_BLEND * FAR_Z - z) / ((MOUND_BLEND - 1.0) * FAR_Z), 0.0), 1.0);
 }
 
 /* the mounds of segment s's slices, before its bands (a slice's mound reaches below its nearer slices' road) */

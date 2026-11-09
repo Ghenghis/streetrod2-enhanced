@@ -19,6 +19,7 @@
 #include "game/race_int.h"
 #include "platform/ega.h"
 #include "platform/vga.h"
+#include "platform/vga.h"
 
 enh_options enh = {
     .res_scale = 4,
@@ -148,6 +149,7 @@ bool enh_hires(void) { return !enh.classic; }
 static struct {
     bool overlay;           /* a race of an enabled mode is running */
     bool bg;                /* inside a race frame, background layer */
+    bool fg_opaque;         /* foreground copy whose every touched pixel is opaque (enh_fg_opaque) */
     bool draws_view;        /* the enhanced view is drawn over the EGA picture (S2.3: road modes 0 and 1; S2.4: 2, 4, 0x10) */
     bool draws_objects;     /* the enhanced view draws the road-side objects (S2.5: road modes 0 and 1) */
     bool in_objects;        /* inside front_objects (enh_objects_begin .. end) or the mirror's objects */
@@ -577,6 +579,7 @@ void enh_opp_drawn(int view_id, int s, int v, bool drawn)
     n->opp_drawn[view_id] = drawn;
 }
 void enh_layer_bg(void) { if (rs.overlay) rs.bg = true; }
+void enh_fg_opaque(bool on) { rs.fg_opaque = on && rs.overlay; }
 
 void enh_opp_place(int view_id, int rx, int ry, bool special)
 {
@@ -671,7 +674,19 @@ void enh_vram_write(u16 off, u32 before)
         u8 touched = (vga.map_mask & 0x0F) ? ((vga.mode & 3) == 1 ? 0xFF : vga.bit_mask) : 0;
         *mask &= (u8)~(touched | changed);
     } else {
-        *mask |= changed;                                       /* foreground: last writer wins per pixel */
+        u8 touched = rs.fg_opaque && (vga.map_mask & 0x0F) ? ((vga.mode & 3) == 1 ? 0xFF : vga.bit_mask) : 0;
+        *mask |= changed | touched;                             /* foreground: last writer wins per pixel */
+    }
+}
+
+void enh_vram_opaque16(u16 seg, u16 off, u16 bits)
+{
+    if (!is_vram(seg) || rs.bg || rs.hold) return;
+    for (int i = 0; i < 2; i++) {
+        u16 o = (u16)(vram_off(seg, (u16)(off + i)));
+        u8 b = (u8)(bits >> (8 * i));
+        if (o >= PAGE1_OFF && o < PAGE1_OFF + PAGE_BYTES) rs.written[0][o - PAGE1_OFF] |= b;
+        else if (o >= PAGE2_OFF && o < PAGE2_OFF + PAGE_BYTES) rs.written[1][o - PAGE2_OFF] |= b;
     }
 }
 
