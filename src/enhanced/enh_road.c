@@ -723,7 +723,7 @@ static void tree(const cam *c, int s)
 }
 
 /* One segment s (band kband of the original) between Pa (near) and Pb (far), in slices. */
-static void segment(const cam *c, int s, int kband, double Pa, double Pb)
+static void segment(const cam *c, int s, int kband, double Pa, double Pb, double *hrun)
 {
     sect p[9];
     double ya = proj_y(c, Pa, SURFACE), yb = proj_y(c, Pb, SURFACE);
@@ -740,6 +740,11 @@ static void segment(const cam *c, int s, int kband, double Pa, double Pb)
         double dy = (c->mode & 6) ? 0.0 : c->hgt - fmax(enh_track_hgt(Pa), enh_track_hgt(Pb));
         hclip = fmax(hclip, 2.0 * dy + 4.0 * (SURFACE - c->cy) / Z_HORIZON + c->bounce + 60.0 + YOFF);
     }
+    /* never below a farther segment's clip: on a road climbing beyond Z_HORIZON each segment's own level horizon lies
+     * ~2 rows below the farther one's and cut the top of its band where the farther band does not reach, leaving a
+     * line of panorama per segment across the far ground */
+    hclip = fmin(hclip, *hrun);
+    *hrun = hclip;
     /* the objects behind the building line go behind the segment's walls (enh_sprite.c); comparing: the original's
      * order, all objects after the band */
     bool split = !c->racing && !c->compare;
@@ -791,9 +796,10 @@ static void road(const cam *c)
     }
     int s_end = c->compare ? c->seg0 + (int)ceil((c->far_z - 4.0) / 8.0 - 1e-9) : (int)ceil(Pfar / 64.0);
     int s_near = c->seg0 + 1, s_far = c->rows > 0 && s_end > c->seg0 + c->rows ? c->seg0 + c->rows : s_end;
+    double hrun = ENH_VIEW_Y1;                                      /* the horizon clip so far (segment) */
     for (int s = s_far; s >= s_near; s--) {
         double Pa = fmax((s - 1) * 64.0, Pnear), Pb = s == s_end ? Pfar : fmin(s * 64.0, Pfar);
-        if (Pb > Pa) segment(c, s, s - c->seg0, Pa, Pb);
+        if (Pb > Pa) segment(c, s, s - c->seg0, Pa, Pb, &hrun);
     }
     ras_haze(0);
     if ((int)floor(c->O / 64.0) <= c->seg0) car_front(c);          /* the car at row 0 is drawn last */
