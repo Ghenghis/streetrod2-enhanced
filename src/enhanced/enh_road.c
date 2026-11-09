@@ -253,7 +253,20 @@ static double ground_h0(const cam *c, const sect *a)
 
 static double flank(const cam *c, const sect *p, double h0)
 {
-    return FAR_SLOPE * fmax(h0 - p->y, 0.0) * pow(FAR_Z / ((p->Pw - c->P) / 8.0 + 4.0), FAR_FADE);
+    /* the street drag's open hills keep their slope at any distance (narrowed, a steep far hill became a green spike) */
+    double fade = c->mode == 1 ? 1.0 : pow(FAR_Z / ((p->Pw - c->P) / 8.0 + 4.0), FAR_FADE);
+    return FAR_SLOPE * fmax(h0 - p->y, 0.0) * fade;
+}
+
+/* the street drag's hills are open country, not Mulholland's banks: a near hill's ground is full width as in the
+ * original's rows (z <= FAR_Z), so its mound's top widens by up to MOUND_FULL beside the road, from 0 at 2 * FAR_Z to the
+ * whole view at FAR_Z (no green wedges with sky between them and the near ground when the hill comes close) */
+#define MOUND_FULL 400.0
+static double mound_wide(const cam *c, double Pw)
+{
+    if (c->mode != 1) return 0.0;
+    double z = (Pw - c->P) / 8.0 + 4.0;
+    return MOUND_FULL * fmin(fmax((2.0 * FAR_Z - z) / FAR_Z, 0.0), 1.0);
 }
 
 /* the mounds of segment s's slices, before its bands (a slice's mound reaches below its nearer slices' road) */
@@ -263,11 +276,13 @@ static void mounds(const cam *c, const sect *p, int n, double hclip, bool flat_l
         const sect *a = &p[i], *b = &p[i + 1];
         double h0 = ground_h0(c, a);
         if (b->y >= a->y || h0 <= hclip || fmin(a->y, b->y) >= h0) continue;
-        double fb = flank(c, b, h0), fa = flank(c, a, h0);
-        u8 cl = flat_l ? 9 : 0x0E, cr = flat_r ? 9 : 0x0E;        ras_clip(0, hclip, 320, h0);
-        quad(flat_l && flat_r ? 9 : 0x0E, b->xol, b->y, b->xor_, b->y, b->xor_, h0, b->xol, h0);
-        quad(cl, b->xol, b->y, b->xol - fb, h0, a->xol - fa, h0, a->xol, a->y);
-        quad(cr, b->xor_, b->y, a->xor_, a->y, a->xor_ + fa, h0, b->xor_ + fb, h0);
+        double fb = flank(c, b, h0), fa = flank(c, a, h0), eb = mound_wide(c, b->Pw), ea = mound_wide(c, a->Pw);
+        double bl = b->xol - eb, br = b->xor_ + eb, al = a->xol - ea, ar = a->xor_ + ea;
+        u8 cl = flat_l ? 9 : 0x0E, cr = flat_r ? 9 : 0x0E;
+        ras_clip(0, hclip, 320, h0);
+        quad(flat_l && flat_r ? 9 : 0x0E, bl, b->y, br, b->y, br, h0, bl, h0);
+        quad(cl, bl, b->y, bl - fb, h0, al - fa, h0, al, a->y);
+        quad(cr, br, b->y, ar, a->y, ar + fa, h0, br + fb, h0);
         ras_clip(0, hclip, 320, ENH_VIEW_Y1);
     }
 }
@@ -644,7 +659,7 @@ static void objects(const cam *c, int s, int pass)
     sect sb = section(c, Pw);
     double h0 = ground_h0(c, &sb);
     if (h0 > 0.0 && sb.y < h0) {
-        double tol = fmax(b.xor_ - b.xr, b.xl - b.xol) + 1.0;
+        double tol = fmax(b.xor_ - b.xr, b.xl - b.xol) + 1.0 + mound_wide(c, Pw);
         b.gclip = true;
         b.gxl = b.xol - tol;
         b.gxr = b.xor_ + tol;
