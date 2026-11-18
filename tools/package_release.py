@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-"""Packages the Windows release of Street Rod 2 (sr2port.exe + "Street Rod 2.exe" + the DLLs they need).
+"""Packages the Windows release of Street Rod 2 Enhanced (sr2-enhanced.exe + "Street Rod 2 Enhanced.exe" + DLLs).
 
-    python sr2port/tools/package_release.py [--build sr2port/build-release]
+    python tools/package_release.py [--build build]
 
-Writes  release/sr2port-v<version>-win64.zip, release/SHA256SUMS.txt  and the folder it zips,
-release/sr2port-v<version>-win64/ (git-ignored). Adapted from the Street Rod (SR1) port's release
-folder (../StreetRod/release). The game's data is never packaged: the zip is checked for it.
+Writes  release/sr2-enhanced-v<version>-win64.zip, release/SHA256SUMS.txt  and the folder it zips,
+release/sr2-enhanced-v<version>-win64/ (git-ignored). Adapted from the faithful port's script.
+The game's data is never packaged: the zip is checked for it.
 
-Needs MSYS2 mingw64 (objdump, the DLLs) and a Release build of sr2port with the launcher
-(-DSR2_LAUNCHER=ON). Run it from any shell; it uses the paths below only.
+Needs MSYS2 mingw64 (objdump, the DLLs) and a Release build with the launcher (-DSR2E_LAUNCHER=ON).
 """
 import argparse
 import hashlib
@@ -20,12 +19,11 @@ import sys
 import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PORT = os.path.dirname(HERE)                      # sr2port/
-REPO = os.path.dirname(PORT)                      # repo root
+REPO = PORT = os.path.dirname(HERE)               # repo root
 RELEASE = os.path.join(REPO, "release")
 MINGW_BIN = "C:/msys64/mingw64/bin"
 SYSTEM_DIR = "C:/Windows/System32"
-EXES = ["sr2port.exe", "Street Rod 2.exe"]
+EXES = ["sr2-enhanced.exe", "Street Rod 2 Enhanced.exe"]
 # Files in the zip besides the exes and DLLs: source of each, and name in the zip.
 DOCS = [
     (os.path.join(PORT, "dist", "README.md"), "README.md"),
@@ -82,11 +80,11 @@ def closure(build_dir):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--build", default=os.path.join(PORT, "build-release"))
+    ap.add_argument("--build", default=os.path.join(PORT, "build"))
     args = ap.parse_args()
     build = os.path.abspath(args.build)
     version = read_version()
-    name = "sr2port-v%s-win64" % version
+    name = "sr2-enhanced-v%s-win64" % version
     stage = os.path.join(RELEASE, name)
     zip_path = os.path.join(RELEASE, name + ".zip")
 
