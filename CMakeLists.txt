@@ -41,4 +41,27 @@ if(WIN32)
                 -DCMAKE_OBJDUMP=${CMAKE_OBJDUMP} -P ${CMAKE_CURRENT_SOURCE_DIR}/tools/copy_dlls.cmake)
 endif()
 
-# ENH: the launcher is not set up yet (PLAN.md E3: adapt ../StreetRod2/sr2-enhanced/launcher, SR2E_LAUNCHER=ON|OFF).
+# ENH: the launcher ("Street Rod 2 Enhanced", launcher/): the game folder, graphics and sound, the game's
+# switches, the window, the Enhanced picture and controls; built beside sr2-enhanced.exe. Needs wxWidgets 3.2
+# (MSYS2: mingw-w64-x86_64-wxwidgets3.2-msw) and a C++17 compiler. ON/OFF forces it; by default (AUTO) it is
+# built when wxWidgets 3.2 is found.
+set(SR2E_LAUNCHER "AUTO" CACHE STRING "Build the launcher, Street Rod 2 Enhanced.exe (wxWidgets): AUTO, ON or OFF")
+set_property(CACHE SR2E_LAUNCHER PROPERTY STRINGS AUTO ON OFF)
+if(SR2E_LAUNCHER STREQUAL "AUTO")
+    find_package(wxWidgets 3.2 CONFIG QUIET COMPONENTS core base)
+    if(NOT wxWidgets_FOUND)
+        find_package(wxWidgets 3.2 QUIET COMPONENTS core base)
+    endif()
+    if(wxWidgets_FOUND)
+        enable_language(CXX)
+        set(SR2E_BUILD_LAUNCHER ON)
+    else()
+        message(STATUS "wxWidgets 3.2 not found: the launcher is not built (-DSR2E_LAUNCHER=ON to require it)")
+    endif()
+elseif(SR2E_LAUNCHER)
+    enable_language(CXX)
+    set(SR2E_BUILD_LAUNCHER ON)
+endif()
+if(SR2E_BUILD_LAUNCHER)
+    add_subdirectory(launcher)
+endif()
