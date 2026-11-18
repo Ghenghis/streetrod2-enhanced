@@ -31,7 +31,7 @@ remove it when it is done.
   S2.9 (draw distance x1.25 = 17.5 segments, `--draw-distance-scale`, on the user's request; U1 check open), S2.4 (Mulholland,
   drag strip), S2.6 rest (Mulholland mirror), S2.7 (the Aqueduct; U1 check open), S2.9 part 2 (`--draw-distance` 60, haze,
   table ends, far opponent; U1 check open), S2.9 rest (mirror distance, Mulholland horizon clip; done 2026-11-01, U1 check open).
-- **Next:** publish v0.1.0 (push, tag, GitHub release with `release/sr2-enhanced-v0.1.0-win64.zip`). S4.1 done 2026-11-18. S3.2 done 2026-11-18 (`launcher/`, `Street Rod 2 Enhanced.exe`, `-DSR2E_LAUNCHER=AUTO|ON|OFF`; U4 pending). S3.1 done 2026-11-02 (`src/enhanced/enh_input.c`; A/Z already existed in the faithful engine, so they stay in `--classic`). S2.10 done 2026-11-01 (`--aspect`, `--integer-scale`). S2.9 done 2026-11-01. S2.8 done 2026-10-31 (timings in its notes). Your tasks: **User to-do** above (the single U1 playtest).
+- **Next:** U1 / U4 playtests of the v0.1.0 release. S4.1 done 2026-11-18 (v0.1.0 released, repo public). S3.2 done 2026-11-18 (`launcher/`, `Street Rod 2 Enhanced.exe`, `-DSR2E_LAUNCHER=AUTO|ON|OFF`; U4 pending). S3.1 done 2026-11-02 (`src/enhanced/enh_input.c`; A/Z already existed in the faithful engine, so they stay in `--classic`). S2.10 done 2026-11-01 (`--aspect`, `--integer-scale`). S2.9 done 2026-11-01. S2.8 done 2026-10-31 (timings in its notes). Your tasks: **User to-do** above (the single U1 playtest).
 - Escalation rule: a subtask that fails twice on Sonnet → new Opus session with a 5-line note
   (symptom, file, what was tried). Never carry an old transcript over.
 
@@ -309,7 +309,7 @@ Notes:
 ### Phase 4 - Release
 | Id | Task | Model | Size | Status |
 |---|---|---|---|---|
-| S4.1 | Packaging (`tools/package_release.py` from the faithful port, adapted to `sr2-enhanced` + launcher), README, CHANGELOG, release v0.1.0 | H | M | done 2026-11-18 (zip built; publish pending your OK) |
+| S4.1 | Packaging (`tools/package_release.py` from the faithful port, adapted to `sr2-enhanced` + launcher), README, CHANGELOG, release v0.1.0 | H | M | done 2026-11-18, released v0.1.0 |
 
 ### Phase 0 — Repository
 | Id | Task | Model | Size | Status |
