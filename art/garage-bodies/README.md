@@ -17,3 +17,12 @@ applying the body, so stock tyres and foreground elements keep their placement.
 The stock garage parks this body at logical `(40, 102)` on the 320 × 200
 screen and draws 56 of its 57 rows. Cars without an eligible replacement,
 modified bodies, Classic mode and other scenes use the original sprites.
+
+## 033 — 1966 Ford Galaxie
+
+This original Gemini body uses the sloping two-door hardtop design from the
+period reference and the approved side-view illustration. Its 1024 × 220 image
+fits SR2 model 02 at logical `(32, 104)` with the original `256 × 54` drawn
+rectangle, axle placement, foreground, and live paint. The garage replay
+changed zero pixels outside the native body mask.
+[Ford’s 1966 full-size sales brochure](https://over-drive-magazine.com/wp-content/uploads/2024/11/1966-Ford-Full-Size-Brochure-1-24C.pdf)
