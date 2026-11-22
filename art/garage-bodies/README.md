@@ -36,3 +36,11 @@ body at logical `(40, 104)` with its original `240 × 54` drawn rectangle.
 The stock-versus-Enhanced garage replay found zero changed pixels outside
 the body mask.
 [Ford's 1961 Thunderbird archive photograph](https://fordimages.com/products/0400-8375-jpg)
+
+## 040 — 1968 Ford Torino
+
+This original Gemini illustration follows the SportsRoof profile in Ford's
+period Torino advertisement. The fitted 992 × 216 asset uses SR2 model 05's
+native mask. The garage replay drew its original 248 × 53 rectangle at
+logical (40, 105) and changed zero pixels outside the body mask.
+[Ford’s 1968 Torino advertisement](https://autohistorypreservationsociety.org/wp-content/uploads/1968-FORD-Ad-Torino-1.pdf)
