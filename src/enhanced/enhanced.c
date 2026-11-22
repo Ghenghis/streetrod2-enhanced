@@ -6,6 +6,7 @@
  * S2.3: the enhanced view of the town and the street drag race (enh_road.c, enh_raster.c) laid over the scaled EGA
  * picture where coverage allows; the compare tool (enh_compare.c). */
 #include "enhanced.h"
+#include "enh_body.h"
 #include "enh_internal.h"
 
 #include <math.h>
@@ -82,6 +83,7 @@ static bool parse_modes(const char *v, unsigned *out)
 int enh_parse_arg(const char *arg, const char *val)
 {
     if (!strcmp(arg, "--classic")) { enh.classic = true; return 1; }
+    if (!strcmp(arg, "--body-art") && val && *val && val[0] != '-') { enh.body_art = val; return 2; }
     if (!strcmp(arg, "--res-scale")) return parse_int(val, 1, 8, &enh.res_scale) ? 2 : 0;
     if (!strcmp(arg, "--aa")) return parse_int(val, 1, 4, &enh.aa) ? 2 : 0;
     if (!strcmp(arg, "--motion-delay")) return parse_int(val, 0, 1000, &enh.motion_delay) ? 2 : 0;
@@ -744,6 +746,7 @@ bool enh_compose(bool (*ega_compose)(u32 *xrgb), u32 *out)
         row -= w;
         for (int k = 1; k < n; k++) memcpy(row + (size_t)k * w, row, (size_t)w * sizeof *row);
     }
+    enh_body_compose(out, n);
     if (live) {
         uint64_t c0 = SDL_GetTicksNS();
         /* The live palette, as the cockpit around the view: a race's first frame is drawn while the palette is still

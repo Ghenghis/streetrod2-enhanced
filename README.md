@@ -7,6 +7,10 @@ faithful port. The original game files are not included.
 
 Download: see Releases. Usage: [dist/README.md](dist/README.md).
 
+To try the registered HD 1965 Mustang body in the parked garage, launch the game
+with `--body-art art/garage-bodies` from the repository root. Pass an absolute
+art directory when launching elsewhere. See [garage body art](art/garage-bodies/README.md).
+
 Build (MSYS2 mingw64, SDL3, wxWidgets 3.2 for the launcher):
 
     cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release

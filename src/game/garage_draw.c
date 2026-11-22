@@ -9,6 +9,7 @@
 
 #include <string.h>
 
+#include "enhanced/enh_body.h" /* ENH: optional garage body art */
 #include "game/ds_draw.h"
 #include "game/records.h"
 #include "game/snd.h"
@@ -145,11 +146,13 @@ static s16 roof_first_row(void)
  * (2 rear bumper stripped, 1 front bumper stripped, 4 chopped roof, 8 scoop), the driver (picture DS:AD74); frames
  * 1..n-1 shifted by 2 px each; the wheels tyre_pics[i] (DS offset of 4 picture ids) and, with smoke, the ground shadow
  * (LIB2 #1138 = 0x472). Also the gas-cap point DS:AD62/AD64 (layout point L10/L11, no sticker any more). */
-void car_compose(FarPtr *frames, s16 model, s16 flags, s16 driver, u16 tyre_pics, s16 smoke, s16 n)
+static void compose_car(FarPtr *frames, s16 model, s16 flags, s16 driver, u16 tyre_pics, s16 smoke,
+                        s16 n, bool capture_body)
 {
     u16 P = (u16)(DS_MODEL_OVERLAYS + 10 * model);
     u16 L = (u16)(DS_MODEL_LAYOUT + 12 * model);
     frames[0] = pic_get(model_pic(model), 1);
+    if (capture_body) enh_body_capture((int)model_pic(model) - 1000, frames[0]); /* ENH */
     DSW(DS_gascap_x) = DSB((u16)(L + 10));
     DSW(DS_gascap_y) = DSB((u16)(L + 11));
     if (flags & 2) pic_blit_at(frames[0], DSS((u16)(P + 6)), 0, DSB((u16)(L + 7)));
@@ -195,12 +198,20 @@ void car_compose(FarPtr *frames, s16 model, s16 flags, s16 driver, u16 tyre_pics
     }
 }
 
+void car_compose(FarPtr *frames, s16 model, s16 flags, s16 driver, u16 tyre_pics, s16 smoke, s16 n)
+{
+    compose_car(frames, model, flags, driver, tyre_pics, smoke, n, false);
+}
+
 /* ============================================================== 1a21:89fa car_draw */
 
 /* 1a21:89fa car_draw. DS:7916 (car_pass) is the Tandy / CGA two-pass state (0, 1 first pass of a two-page driver, 2
  * second pass); on VGA it stays 0 and the loop runs once. */
 void car_draw(s16 mode, s16 model, s16 flags, s16 driver, s16 y, u16 tyre_pics)
 {
+    const bool capture_body = LOC == 1 && DSS(DS_driver_id) == -2 && !driver &&
+                              !(flags & 15) && (mode == 3 || mode == 4 || mode == 8);
+    enh_body_clear(); /* ENH: invalidate the old frame when a new car is drawn. */
     s16 ytop = (s16)(y - 0x45);                   /* [bp-3Ah] */
     FarPtr frames[4] = { FAR_NULL, FAR_NULL, FAR_NULL, FAR_NULL };   /* [bp-30h] */
     FarPtr bgsrc = FAR_NULL, bg = FAR_NULL;       /* [bp-44h], [bp-3Ah] */
@@ -238,7 +249,7 @@ void car_draw(s16 mode, s16 model, s16 flags, s16 driver, s16 y, u16 tyre_pics)
             } else {
                 arena_reset_stacks();
             }
-            car_compose(frames, model, flags, driver, tyre_pics, 1, nfr);
+            compose_car(frames, model, flags, driver, tyre_pics, 1, nfr, capture_body);
             if (!stat) {
                 if (DSS(DS_car_pass) == 1) { DSW(DS_strip_w) = 0x140; DSW(DS_strip_x) = 0; }
                 else { DSW(DS_strip_w) = (u16)xend; DSW(DS_strip_x) = (u16)(mode == 2 ? x : 0); }
@@ -268,6 +279,7 @@ void car_draw(s16 mode, s16 model, s16 flags, s16 driver, s16 y, u16 tyre_pics)
                 d.off = (u16)((u16)((y - h) * 0x28) + (u16)(x >> 3) + d.off + 0x28);
                 ega_latch_copy_to40(ds_far(DS_car_tails), (s16)desc_stride(frames[0]), (s16)(desc_h(frames[0]) - DSS(YOFF)), d,
                                     (s16)desc_stride(frames[0]));
+                if (capture_body) enh_body_park(x, y - h + 1, rows); /* ENH */
                 present_back_page();
                 break;
             }
@@ -277,11 +289,13 @@ void car_draw(s16 mode, s16 model, s16 flags, s16 driver, s16 y, u16 tyre_pics)
                 ega_latch_copy_to40(ds_far(DS_car_tails), (s16)desc_stride(frames[0]), (s16)(h - DSS(YOFF)), d,
                                     (s16)desc_stride(frames[0]));
                 page_copy_rect(g_front(), g_back(), x, (s16)(y - h + 1), (s16)(x + w - 1), y);
+                if (capture_body) enh_body_park(x, y - h + 1, h - DSS(YOFF)); /* ENH */
                 break;
             }
         }
         u16 anim = sprite_scene_setup(ax_x, y, frames, DS_car_tails, nfr, bg, bgsrc, ov);
         anim_script(anim, mode, xend);
+        if (capture_body && mode == 4) enh_body_park(x, y - h + 1, h - DSS(YOFF)); /* ENH */
         if (mode == 6) memcpy(mp(DGROUP, (u16)(DSW((u16)(anim + 0x12)) + 4)), mp(DGROUP, DS_car_dirty), 8);
         if (mode == 4 || mode == 1 || mode == 2 || mode == 6) {
             DSW(DS_car_running) = 0;

@@ -18,6 +18,7 @@
 
 typedef struct {
     bool classic;           /* --classic: all enhancements off */
+    const char *body_art;   /* --body-art DIR: registered garage body art */
     int res_scale;          /* --res-scale 1..8: output frame 320*N x 200*N (default 4) */
     int aa;                 /* --aa 1..4: samples per axis, res_scale * aa <= 16 (default 2) */
     int motion_delay;       /* --motion-delay MS: interpolation delay, 0 = latest snapshot (default 110) */

@@ -30,9 +30,12 @@ else()
     endif()
 endif()
 if(WIN32)
-    add_custom_command(TARGET sr2-enhanced POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_RUNTIME_DLLS:sr2-enhanced> $<TARGET_FILE_DIR:sr2-enhanced>
-        COMMAND_EXPAND_LISTS)
+    get_target_property(SR2_SDL_LIBRARY_TYPE SDL3::SDL3 TYPE)
+    if(SR2_SDL_LIBRARY_TYPE STREQUAL "SHARED_LIBRARY")
+        add_custom_command(TARGET sr2-enhanced POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_RUNTIME_DLLS:sr2-enhanced> $<TARGET_FILE_DIR:sr2-enhanced>
+            COMMAND_EXPAND_LISTS)
+    endif()
     # And what those load in turn (MSYS2's SDL3.dll needs libiconv-2.dll), so the game starts outside
     # the MSYS2 shell, e.g. from the launcher.
     get_filename_component(SR2_DLL_DIR "${CMAKE_C_COMPILER}" DIRECTORY)

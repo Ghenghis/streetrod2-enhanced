@@ -8,6 +8,7 @@
 
 #include "opl3.h"
 #include "enhanced/enhanced.h"   /* ENH: presentation options */
+#include "enhanced/enh_body.h"   /* ENH: optional garage body art */
 
 #define AUDIO_RATE 49716          /* PORT: the OPL2 sample rate (14.318 MHz / 288), so Nuked-OPL3 runs unresampled */
 #define SPEAKER_AMPLITUDE 5000
@@ -121,6 +122,7 @@ void host_shutdown(void)
     if (renderer) SDL_DestroyRenderer(renderer);
     if (window) SDL_DestroyWindow(window);
     SDL_free(game_dir);
+    enh_body_shutdown(); /* ENH */
     SDL_Quit();
 }
 
