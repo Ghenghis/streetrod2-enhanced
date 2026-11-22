@@ -24,7 +24,7 @@ screen and draws 56 of its 57 rows. Cars without an eligible replacement,
 modified bodies, Classic mode and other scenes use the original sprites.
 
 The 1965 Mustang also has a restored finish. Gemini used two Drive scene
-references for the stronger roof, shoulder and wheel-arch highlights. Both
+references and garage masters for the bright roof and shoulder highlights, with a sharp horizon reflection and deeper lower panels. Both
 finishes use the same 960 × 228 canvas, native mask and game-selected paint.
 The garage replay confirmed zero changed pixels outside that mask.
 
