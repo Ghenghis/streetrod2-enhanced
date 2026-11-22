@@ -54,3 +54,26 @@ period Torino advertisement. The fitted 992 × 216 asset uses SR2 model 05's
 native mask. The garage replay drew its original 248 × 53 rectangle at
 logical (40, 105) and changed zero pixels outside the body mask.
 [Ford’s 1968 Torino advertisement](https://autohistorypreservationsociety.org/wp-content/uploads/1968-FORD-Ad-Torino-1.pdf)
+
+## 026 — 1963 Ford Falcon
+
+The 1024 × 220 Gemini body follows Ford's two-door hardtop and retains the
+slender side trim and front fender spear. Model 01 uses the exact native
+mask at logical (32, 104). The garage replay changed zero pixels outside
+its body mask.
+[1963 Ford archive photograph](https://fordimages.com/products/hv1963-0039)
+
+## 039 — 1964 Ford Fairlane
+
+The 992 × 232 Gemini body retains the Sports Coupe's side chrome and slanted
+trim accent. The fitting preserves the straight molding and the game tint.
+Model 04 uses the exact native mask at logical (40, 101). Its garage replay
+changed zero pixels outside the body mask.
+[1964 Ford archive photograph](https://fordimages.com/products/hv1964-0020)
+
+## 089 — 1967 Mercury Cougar
+
+The 1024 × 216 Gemini body uses the early Cougar's long hood and short rear
+deck. Model 08 draws it at logical (32, 105) with its exact native mask.
+Its garage replay changed zero pixels outside the body mask.
+[1967 Mercury factory brochure archive](https://cougarclub2.org/collectibles/brochures/)
