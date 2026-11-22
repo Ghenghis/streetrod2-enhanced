@@ -5,6 +5,11 @@ The filename is the three-digit LIB2 member number. Use a 32-bit BMP with
 explicit alpha at four times the native member dimensions. An asset is eligible
 only when every 4 × 4 alpha block agrees with its live native mask.
 
+The default shows the period finish. Add `--body-art-restored` to use a
+matching `NNN-restored.bmp` with stronger paint highlights and reflections.
+The period finish loads when the restored asset is missing or fails the same
+native mask check.
+
 ## 034 — 1965 Ford Mustang Fastback 2+2
 
 This is an original Gemini illustration fitted to SR2 model 03, LIB2 member 034.
@@ -17,6 +22,11 @@ applying the body, so stock tyres and foreground elements keep their placement.
 The stock garage parks this body at logical `(40, 102)` on the 320 × 200
 screen and draws 56 of its 57 rows. Cars without an eligible replacement,
 modified bodies, Classic mode and other scenes use the original sprites.
+
+The 1965 Mustang also has a restored finish. Gemini used two Drive scene
+references for the stronger roof, shoulder and wheel-arch highlights. Both
+finishes use the same 960 × 228 canvas, native mask and game-selected paint.
+The garage replay confirmed zero changed pixels outside that mask.
 
 ## 033 — 1966 Ford Galaxie
 

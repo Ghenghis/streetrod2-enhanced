@@ -33,24 +33,25 @@ void enh_body_shutdown(void)
     body.member = -1;
 }
 
-void enh_body_capture(int member, FarPtr sprite)
+static SDL_Surface *load_art(int member, bool restored)
 {
-    if (!enh.body_art || enh.classic || member < 0) return;
-    if (member != body.member) {
-        enh_body_shutdown();
-        body.member = member;
-        char *path = NULL;
-        if (SDL_asprintf(&path, "%s/%03d.bmp", enh.body_art, member) < 0) return;
-        SDL_Surface *loaded = SDL_LoadBMP(path);
-        SDL_free(path);
-        if (loaded) body.image = SDL_ConvertSurface(loaded, SDL_PIXELFORMAT_ARGB8888);
-        SDL_DestroySurface(loaded);
-    }
-    if (!body.image) return;
+    char *path = NULL;
+    if (SDL_asprintf(&path, "%s/%03d%s.bmp", enh.body_art, member, restored ? "-restored" : "") < 0)
+        return NULL;
+    SDL_Surface *loaded = SDL_LoadBMP(path);
+    SDL_free(path);
+    SDL_Surface *converted = loaded ? SDL_ConvertSurface(loaded, SDL_PIXELFORMAT_ARGB8888) : NULL;
+    SDL_DestroySurface(loaded);
+    return converted;
+}
+
+static bool capture_art(FarPtr sprite)
+{
+    if (!body.image) return false;
     const int w = desc_w(sprite), h = desc_h(sprite), stride = desc_stride(sprite);
     FarPtr mask = desc_mask(sprite), bits = desc_planes(sprite);
     if (w < 1 || w > 320 || h < 1 || h > 200 || far_is_null(mask) ||
-        body.image->w != ART_SCALE * w || body.image->h != ART_SCALE * h) return;
+        body.image->w != ART_SCALE * w || body.image->h != ART_SCALE * h) return false;
     for (int y = 0; y < h; ++y) {
         for (int x = 0; x < w; ++x) {
             int off = y * stride + x / 8;
@@ -59,7 +60,7 @@ void enh_body_capture(int member, FarPtr sprite)
             for (int dy = 0; dy < ART_SCALE; ++dy) {
                 const u32 *ink = art_row(y * ART_SCALE + dy) + x * ART_SCALE;
                 for (int dx = 0; dx < ART_SCALE; ++dx)
-                    if (ink[dx] >> 24 != (solid ? 255u : 0u)) return;
+                    if (ink[dx] >> 24 != (solid ? 255u : 0u)) return false;
             }
             u8 index = 0;
             for (int plane = 0; plane < 4; ++plane)
@@ -69,7 +70,28 @@ void enh_body_capture(int member, FarPtr sprite)
     }
     body.width = w;
     body.height = h;
-    body.captured = true;
+    return true;
+}
+
+void enh_body_capture(int member, FarPtr sprite)
+{
+    if (!enh.body_art || enh.classic || member < 0) return;
+    if (member == body.member) {
+        body.captured = capture_art(sprite);
+        return;
+    }
+    enh_body_shutdown();
+    body.member = member;
+    if (enh.body_art_restored) {
+        body.image = load_art(member, true);
+        if (capture_art(sprite)) {
+            body.captured = true;
+            return;
+        }
+        SDL_DestroySurface(body.image);
+    }
+    body.image = load_art(member, false);
+    body.captured = capture_art(sprite);
 }
 
 void enh_body_park(int x, int y, int rows)

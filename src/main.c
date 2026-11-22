@@ -26,7 +26,7 @@
 static int usage(const char *prog)
 {
     fprintf(stderr, "usage: %s [--game-dir DIR] [--scale N] [--fullscreen] [--check] [--run-ms N] [--classic] "
-                    "[--body-art DIR] [--res-scale N] [--aa N] [--motion-delay MS] [--enh-modes LIST] [--draw-distance N] [--haze N] [--aspect W:H|window] [--integer-scale] [--no-gear-keys] [--key-shift-up KEY] [--key-shift-down KEY] [--no-pad-extras] "   /* ENH: */
+                    "[--body-art DIR] [--body-art-restored] [--res-scale N] [--aa N] [--motion-delay MS] [--enh-modes LIST] [--draw-distance N] [--haze N] [--aspect W:H|window] [--integer-scale] [--no-gear-keys] [--key-shift-up KEY] [--key-shift-down KEY] [--no-pad-extras] "   /* ENH: */
                     "[1] [nomouse] [demo] [nouemem] [e|c|v|h|t]\n", prog);
     return 2;
 }

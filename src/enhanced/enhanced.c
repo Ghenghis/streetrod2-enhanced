@@ -84,6 +84,7 @@ int enh_parse_arg(const char *arg, const char *val)
 {
     if (!strcmp(arg, "--classic")) { enh.classic = true; return 1; }
     if (!strcmp(arg, "--body-art") && val && *val && val[0] != '-') { enh.body_art = val; return 2; }
+    if (!strcmp(arg, "--body-art-restored")) { enh.body_art_restored = true; return 1; }
     if (!strcmp(arg, "--res-scale")) return parse_int(val, 1, 8, &enh.res_scale) ? 2 : 0;
     if (!strcmp(arg, "--aa")) return parse_int(val, 1, 4, &enh.aa) ? 2 : 0;
     if (!strcmp(arg, "--motion-delay")) return parse_int(val, 0, 1000, &enh.motion_delay) ? 2 : 0;

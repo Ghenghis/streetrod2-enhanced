@@ -7,9 +7,10 @@ faithful port. The original game files are not included.
 
 Download: see Releases. Usage: [dist/README.md](dist/README.md).
 
-To try the registered HD 1965 Mustang body in the parked garage, launch the game
-with `--body-art art/garage-bodies` from the repository root. Pass an absolute
-art directory when launching elsewhere. See [garage body art](art/garage-bodies/README.md).
+Enable the registered art in the parked garage with `--body-art art/garage-bodies`
+from the repository root. Add `--body-art-restored` for fresh paint on supported
+cars. Pass an absolute art directory when launching elsewhere.
+See [garage body art](art/garage-bodies/README.md).
 
 Build (MSYS2 mingw64, SDL3, wxWidgets 3.2 for the launcher):
 
