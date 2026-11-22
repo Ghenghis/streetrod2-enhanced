@@ -77,3 +77,14 @@ The 1024 × 216 Gemini body uses the early Cougar's long hood and short rear
 deck. Model 08 draws it at logical (32, 105) with its exact native mask.
 Its garage replay changed zero pixels outside the body mask.
 [1967 Mercury factory brochure archive](https://cougarclub2.org/collectibles/brochures/)
+
+## 094, 095, and 102 — Chevrolet coupe finishes
+
+Gemini supplied distinct period and restored bodies for each coupe. Each
+pair fits the same native silhouette, axle positions and open wheel arches.
+The garage replay changed zero pixels outside the native masks in either
+finish. Missing or invalid restored artwork falls back to period paint.
+
+- 1963 Corvette Sting Ray coupe, model 10, LIB2 094. [Chevrolet sales brochure](https://www.corvsport.com/wp-content/uploads/2018/01/1963-Corvette-Dealer-Sales-Brochure.pdf)
+- 1967 Camaro Sport Coupe, model 11, LIB2 095. [Chevrolet brochure at The Henry Ford](https://www.thehenryford.org/collections/explore/artifact/365069)
+- 1968 Chevelle SS, model 13, LIB2 102. [Chevrolet sales brochure](https://xr793.com/wp-content/uploads/2017/08/1968-Chevrolet-Chevelle.pdf)
