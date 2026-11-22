@@ -26,3 +26,13 @@ fits SR2 model 02 at logical `(32, 104)` with the original `256 × 54` drawn
 rectangle, axle placement, foreground, and live paint. The garage replay
 changed zero pixels outside the native body mask.
 [Ford’s 1966 full-size sales brochure](https://over-drive-magazine.com/wp-content/uploads/2024/11/1966-Ford-Full-Size-Brochure-1-24C.pdf)
+
+## 090 — 1961 Ford Thunderbird
+
+This original Gemini illustration depicts the fixed-roof hardtop with the
+shallow rear wheel opening visible in the period reference. Its 960 × 220
+image uses SR2 model 09's native mask and wheel openings. The game drew the
+body at logical `(40, 104)` with its original `240 × 54` drawn rectangle.
+The stock-versus-Enhanced garage replay found zero changed pixels outside
+the body mask.
+[Ford's 1961 Thunderbird archive photograph](https://fordimages.com/products/0400-8375-jpg)
